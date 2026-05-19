@@ -22,7 +22,7 @@ CREATE TYPE risk_decision AS ENUM (
 
 CREATE TABLE users (
     id              UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    cognito_sub     VARCHAR(255) UNIQUE NOT NULL,
+    supabase_uid    VARCHAR(255) UNIQUE NOT NULL,
     email           VARCHAR(255) UNIQUE NOT NULL,
     role            user_role NOT NULL DEFAULT 'customer',
     is_active       BOOLEAN DEFAULT TRUE,
@@ -152,7 +152,7 @@ CREATE TABLE audit_logs (
     resource_id     UUID,
     ip_address      INET,
     user_agent      TEXT,
-    metadata        JSONB,
+    extra_metadata  JSONB,
     created_at      TIMESTAMPTZ DEFAULT NOW()
 );
 
@@ -170,7 +170,7 @@ CREATE TABLE alerts (
 
 -- ── Indexes ──────────────────────────────────────────────────────────────────
 
-CREATE INDEX idx_users_cognito_sub         ON users(cognito_sub);
+CREATE INDEX idx_users_supabase_uid        ON users(supabase_uid);
 CREATE INDEX idx_users_email               ON users(email);
 CREATE INDEX idx_documents_user_id         ON documents(user_id);
 CREATE INDEX idx_doc_verif_document_id     ON document_verifications(document_id);

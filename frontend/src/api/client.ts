@@ -3,13 +3,19 @@ import axios from "axios";
 const api = axios.create({ baseURL: "/api/v1" });
 
 api.interceptors.request.use((config) => {
-  const token = localStorage.getItem("token");
+  const token = localStorage.getItem("otp_access_token");
   if (token) config.headers.Authorization = `Bearer ${token}`;
   return config;
 });
 
 // ── Auth ──────────────────────────────────────────────────────────────────────
-export const registerUser = (data: { email: string; cognito_sub: string; role?: string }) =>
+export const sendOtp = (phone: string) =>
+  api.post("/auth/send-otp", { phone });
+
+export const verifyOtp = (phone: string, otp: string) =>
+  api.post("/auth/verify-otp", { phone, otp });
+
+export const registerUser = (data: { email: string; password: string; supabase_uid?: string; role?: string }) =>
   api.post("/auth/register", data);
 
 export const getMe = () => api.get("/auth/me");
@@ -63,5 +69,37 @@ export const createCase = (data: {
 export const listCases = () => api.get("/cases/");
 
 export const resolveCase = (caseId: string) => api.patch(`/cases/${caseId}/resolve`);
+
+// ── Onboarding ────────────────────────────────────────────────────────────────
+export const getOnboardingStatus = () => api.get("/onboarding/status");
+
+export const selectOnboardingType = (onboarding_type: "individual" | "corporate") =>
+  api.post("/onboarding/select-type", { onboarding_type });
+
+export const saveIndividualProfile = (data: Record<string, unknown>) =>
+  api.post("/onboarding/individual/profile", data);
+
+export const getIndividualProfile = () => api.get("/onboarding/individual/profile");
+
+export const saveCorporateProfile = (data: Record<string, unknown>) =>
+  api.post("/onboarding/corporate/profile", data);
+
+export const getCorporateProfile = () => api.get("/onboarding/corporate/profile");
+
+export const addDirector = (data: Record<string, unknown>) =>
+  api.post("/onboarding/corporate/directors", data);
+
+export const listDirectors = () => api.get("/onboarding/corporate/directors");
+
+export const removeDirector = (id: string) =>
+  api.delete(`/onboarding/corporate/directors/${id}`);
+
+export const markDocumentsUploaded = () =>
+  api.post("/onboarding/advance/documents-uploaded");
+
+export const triggerKYC = () => api.post("/onboarding/advance/kyc-pending");
+
+export const makeDecision = (userId: string, decision: string) =>
+  api.post(`/onboarding/decision/${userId}?decision=${decision}`);
 
 export default api;

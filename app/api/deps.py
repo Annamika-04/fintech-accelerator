@@ -1,8 +1,10 @@
 from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from jose import jwt, JWTError
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from app.core.security import verify_cognito_token
+from app.core.config import settings
+from app.core.security import verify_supabase_token
 from app.db.session import get_db
 from app.models.user import User, UserRole
 
@@ -13,8 +15,33 @@ async def get_current_user(
     credentials: HTTPAuthorizationCredentials = Depends(bearer_scheme),
     db: AsyncSession = Depends(get_db),
 ) -> User:
-    payload = await verify_cognito_token(credentials.credentials)
-    result = await db.execute(select(User).where(User.cognito_sub == payload["sub"]))
+    token = credentials.credentials
+
+    # ── Try OTP-issued HS256 token first (iss = veritasaml-otp) ──────────────
+    try:
+        unverified = jwt.get_unverified_claims(token)
+        if unverified.get("iss") == "veritasaml-otp":
+            payload = jwt.decode(token, settings.SECRET_KEY, algorithms=["HS256"])
+            user_id = payload.get("sub")
+            if not user_id:
+                raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
+            from sqlalchemy.dialects.postgresql import UUID as PGUUID
+            import uuid as _uuid
+            result = await db.execute(select(User).where(User.id == _uuid.UUID(user_id)))
+            user = result.scalar_one_or_none()
+            if not user or not user.is_active:
+                raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found or inactive")
+            return user
+    except JWTError:
+        pass
+
+    # ── Fall back to Supabase token (RS256 / HS256 via JWKS) ─────────────────
+    payload = await verify_supabase_token(token)
+    supabase_uid = payload.get("sub")
+    if not supabase_uid:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token payload")
+
+    result = await db.execute(select(User).where(User.supabase_uid == supabase_uid))
     user = result.scalar_one_or_none()
     if not user or not user.is_active:
         raise HTTPException(

@@ -1,6 +1,6 @@
 import uuid
-from sqlalchemy import Boolean, Column, ForeignKey, JSON, String
-from sqlalchemy.dialects.postgresql import TIMESTAMPTZ, UUID
+from sqlalchemy import Boolean, Column, DateTime, ForeignKey, JSON, String
+from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.sql import func
 from app.db.base import Base
 
@@ -18,5 +18,5 @@ class AMLScreening(Base):
     adverse_media_flag = Column(Boolean, default=False)
     match_details = Column(JSON)
     risk_flags = Column(JSON)
-    screened_at = Column(TIMESTAMPTZ, server_default=func.now())
-    created_at = Column(TIMESTAMPTZ, server_default=func.now())
+    screened_at = Column(DateTime(timezone=True), server_default=func.now())
+    created_at = Column(DateTime(timezone=True), server_default=func.now())

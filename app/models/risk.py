@@ -1,7 +1,7 @@
 import enum
 import uuid
-from sqlalchemy import Boolean, Column, Enum as SAEnum, ForeignKey, Integer, JSON, String, Text
-from sqlalchemy.dialects.postgresql import INET, TIMESTAMPTZ, UUID
+from sqlalchemy import Boolean, Column, DateTime, Enum as SAEnum, ForeignKey, Integer, JSON, String, Text
+from sqlalchemy.dialects.postgresql import INET, UUID
 from sqlalchemy.sql import func
 from app.db.base import Base
 
@@ -28,7 +28,7 @@ class RiskScore(Base):
     final_score = Column(Integer, nullable=False)
     decision = Column(SAEnum(RiskDecision), nullable=False)
     score_breakdown = Column(JSON)
-    calculated_at = Column(TIMESTAMPTZ, server_default=func.now())
+    calculated_at = Column(DateTime(timezone=True), server_default=func.now())
 
 
 class Case(Base):
@@ -42,9 +42,9 @@ class Case(Base):
     assigned_to = Column(UUID(as_uuid=True), ForeignKey("users.id"), index=True)
     risk_score_id = Column(UUID(as_uuid=True), ForeignKey("risk_scores.id"))
     notes = Column(Text)
-    resolved_at = Column(TIMESTAMPTZ, nullable=True)
-    created_at = Column(TIMESTAMPTZ, server_default=func.now())
-    updated_at = Column(TIMESTAMPTZ, server_default=func.now(), onupdate=func.now())
+    resolved_at = Column(DateTime(timezone=True), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
 
 class AuditLog(Base):
@@ -57,8 +57,8 @@ class AuditLog(Base):
     resource_id = Column(UUID(as_uuid=True))
     ip_address = Column(INET)
     user_agent = Column(Text)
-    metadata = Column(JSON)
-    created_at = Column(TIMESTAMPTZ, server_default=func.now(), index=True)
+    extra_metadata = Column(JSON)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
 
 
 class Alert(Base):
@@ -71,5 +71,5 @@ class Alert(Base):
     message = Column(Text)
     is_resolved = Column(Boolean, default=False)
     resolved_by = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
-    resolved_at = Column(TIMESTAMPTZ, nullable=True)
-    created_at = Column(TIMESTAMPTZ, server_default=func.now())
+    resolved_at = Column(DateTime(timezone=True), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())

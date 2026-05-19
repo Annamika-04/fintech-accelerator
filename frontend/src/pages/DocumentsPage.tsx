@@ -1,6 +1,9 @@
 import { useEffect, useState, ChangeEvent, FormEvent } from "react";
-import { getPresignedUrl, confirmUpload, listDocuments } from "../api/client";
+import { motion } from "framer-motion";
+import { FileText, Upload } from "lucide-react";
 import axios from "axios";
+import { getPresignedUrl, confirmUpload, listDocuments } from "../api/client";
+import { PageHeader, SkeletonTable, EmptyState, ErrorState, Badge, IconButton } from "../components/ui";
 
 const DOC_TYPES = ["passport", "aadhaar", "pan", "driving_license", "utility_bill", "company_document"];
 
@@ -13,32 +16,20 @@ interface Doc {
   created_at: string;
 }
 
-const card: React.CSSProperties = {
-  background: "#111827",
-  border: "1px solid rgba(180,145,70,0.15)",
-  borderRadius: 12,
-  padding: "24px 28px",
+const STATUS_BADGE: Record<string, { color: string; bg: string; border: string }> = {
+  uploaded:  { color: "#6ee7b7", bg: "rgba(52,211,153,0.08)",  border: "rgba(52,211,153,0.2)" },
+  clean:     { color: "#6ee7b7", bg: "rgba(52,211,153,0.08)",  border: "rgba(52,211,153,0.2)" },
+  verified:  { color: "#6ee7b7", bg: "rgba(52,211,153,0.08)",  border: "rgba(52,211,153,0.2)" },
+  pending:   { color: "#fcd34d", bg: "rgba(251,191,36,0.08)",  border: "rgba(251,191,36,0.2)" },
+  failed:    { color: "#fca5a5", bg: "rgba(248,113,113,0.08)", border: "rgba(248,113,113,0.2)" },
+  infected:  { color: "#fca5a5", bg: "rgba(248,113,113,0.08)", border: "rgba(248,113,113,0.2)" },
 };
 
-const label: React.CSSProperties = {
-  display: "block",
-  fontSize: 10,
-  letterSpacing: "0.14em",
-  textTransform: "uppercase",
-  color: "rgba(180,145,70,0.7)",
-  marginBottom: 8,
-};
-
-const inputStyle: React.CSSProperties = {
-  width: "100%",
-  background: "#0d1117",
-  border: "1px solid rgba(180,145,70,0.2)",
-  borderRadius: 8,
-  padding: "10px 14px",
-  fontSize: 13,
-  color: "#e2e8f0",
-  outline: "none",
-  boxSizing: "border-box",
+const inp: React.CSSProperties = {
+  width: "100%", background: "#0d1117",
+  border: "1px solid rgba(180,145,70,0.2)", borderRadius: 8,
+  padding: "10px 14px", fontSize: 13, color: "#e2e8f0",
+  outline: "none", boxSizing: "border-box",
 };
 
 export default function DocumentsPage() {
@@ -47,26 +38,32 @@ export default function DocumentsPage() {
   const [docType, setDocType] = useState(DOC_TYPES[0]);
   const [status, setStatus] = useState("");
   const [loading, setLoading] = useState(false);
+  const [fetching, setFetching] = useState(true);
+  const [error, setError] = useState("");
 
-  const fetchDocs = () => listDocuments().then((r) => setDocs(r.data)).catch(() => {});
+  const fetchDocs = () => {
+    setError("");
+    return listDocuments()
+      .then((r) => setDocs(r.data))
+      .catch(() => setError("Failed to load documents."))
+      .finally(() => setFetching(false));
+  };
 
   useEffect(() => { fetchDocs(); }, []);
 
   const handleUpload = async (e: FormEvent) => {
     e.preventDefault();
     if (!file) return;
-    setLoading(true);
-    setStatus("");
+    setLoading(true); setStatus("");
     try {
       const { data } = await getPresignedUrl({
-        document_type: docType,
-        filename: file.name,
-        content_type: file.type,
-        file_size_bytes: file.size,
+        document_type: docType, filename: file.name,
+        content_type: file.type, file_size_bytes: file.size,
       });
       await axios.put(data.upload_url, file, { headers: { "Content-Type": file.type } });
       await confirmUpload({ document_id: data.document_id, file_hash: "" });
       setStatus("✓ Upload confirmed. OCR processing started.");
+      setFile(null);
       fetchDocs();
     } catch (err: unknown) {
       const msg = axios.isAxiosError(err) ? err.response?.data?.detail : "Upload failed.";
@@ -78,64 +75,53 @@ export default function DocumentsPage() {
 
   return (
     <div style={{ maxWidth: 900 }}>
-      {/* Page header */}
-      <div style={{ marginBottom: 28 }}>
-        <div style={{ fontSize: 10, letterSpacing: "0.18em", textTransform: "uppercase", color: "rgba(180,145,70,0.6)", marginBottom: 6 }}>
-          KYC Platform
-        </div>
-        <h1 style={{ fontSize: 24, fontWeight: 600, color: "#f0e6cc", margin: 0 }}>Documents</h1>
-        <p style={{ fontSize: 13, color: "rgba(200,210,230,0.5)", marginTop: 4 }}>
-          Upload and manage identity documents for verification.
-        </p>
-      </div>
+      <PageHeader
+        eyebrow="KYC Platform"
+        title="Documents"
+        subtitle="Upload and manage identity documents for verification."
+        actions={<IconButton icon={FileText} onClick={fetchDocs} label="Refresh" />}
+      />
 
       {/* Upload card */}
-      <div style={{ ...card, marginBottom: 24 }}>
-        <div style={{ fontSize: 14, fontWeight: 600, color: "#e2e8f0", marginBottom: 20, display: "flex", alignItems: "center", gap: 8 }}>
-          <span style={{ color: "#b49146" }}>↑</span> Upload Document
+      <motion.div
+        initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
+        style={{ background: "#111827", border: "1px solid rgba(180,145,70,0.15)", borderRadius: 12, padding: "24px 28px", marginBottom: 24 }}
+      >
+        <div style={{ fontSize: 13, fontWeight: 600, color: "#e2e8f0", marginBottom: 20, display: "flex", alignItems: "center", gap: 8 }}>
+          <Upload size={15} color="#b49146" /> Upload Document
         </div>
 
         <form onSubmit={handleUpload} style={{ display: "flex", flexDirection: "column", gap: 16 }}>
           <div>
-            <label style={label}>Document Type</label>
-            <select
-              value={docType}
-              onChange={(e) => setDocType(e.target.value)}
-              style={{ ...inputStyle, cursor: "pointer", appearance: "none" }}
-            >
+            <label style={{ display: "block", fontSize: 10, letterSpacing: "0.14em", textTransform: "uppercase", color: "rgba(180,145,70,0.7)", marginBottom: 8 }}>
+              Document Type
+            </label>
+            <select value={docType} onChange={(e) => setDocType(e.target.value)} style={{ ...inp, cursor: "pointer" }}>
               {DOC_TYPES.map((t) => (
-                <option key={t} value={t} style={{ background: "#0d1117", color: "#e2e8f0" }}>
-                  {t.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())}
-                </option>
+                <option key={t} value={t}>{t.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())}</option>
               ))}
             </select>
           </div>
 
           <div>
-            <label style={label}>File</label>
+            <label style={{ display: "block", fontSize: 10, letterSpacing: "0.14em", textTransform: "uppercase", color: "rgba(180,145,70,0.7)", marginBottom: 8 }}>
+              File
+            </label>
             <label style={{
               display: "flex", alignItems: "center", gap: 12,
-              background: "#0d1117",
-              border: "1px dashed rgba(180,145,70,0.3)",
-              borderRadius: 8, padding: "12px 16px",
-              cursor: "pointer", color: "rgba(200,210,230,0.6)", fontSize: 13,
+              background: "#0d1117", border: "1px dashed rgba(180,145,70,0.3)",
+              borderRadius: 8, padding: "12px 16px", cursor: "pointer",
+              color: "rgba(200,210,230,0.6)", fontSize: 13,
             }}>
-              <span style={{
-                background: "rgba(180,145,70,0.12)", border: "1px solid rgba(180,145,70,0.3)",
-                borderRadius: 6, padding: "4px 12px", fontSize: 12, color: "#b49146", whiteSpace: "nowrap",
-              }}>
+              <span style={{ background: "rgba(180,145,70,0.12)", border: "1px solid rgba(180,145,70,0.3)", borderRadius: 6, padding: "4px 12px", fontSize: 12, color: "#b49146", whiteSpace: "nowrap" }}>
                 Choose File
               </span>
               <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                 {file ? file.name : "No file chosen"}
               </span>
-              <input
-                type="file"
-                accept="image/jpeg,image/png,image/webp,application/pdf,image/tiff"
+              <input type="file" accept="image/jpeg,image/png,image/webp,application/pdf,image/tiff"
                 onChange={(e: ChangeEvent<HTMLInputElement>) => setFile(e.target.files?.[0] ?? null)}
-                style={{ display: "none" }}
-                required
-              />
+                style={{ display: "none" }} required />
             </label>
           </div>
 
@@ -151,88 +137,65 @@ export default function DocumentsPage() {
           )}
 
           <div>
-            <button
-              type="submit"
-              disabled={loading}
-              style={{
-                background: loading ? "rgba(180,145,70,0.3)" : "linear-gradient(135deg,#b49146,#8a6c2f)",
-                border: "none", borderRadius: 8,
-                padding: "11px 28px", fontSize: 13, fontWeight: 500,
-                letterSpacing: "0.08em", textTransform: "uppercase",
-                color: loading ? "rgba(255,255,255,0.4)" : "#080c14",
-                cursor: loading ? "not-allowed" : "pointer",
-                transition: "opacity 0.2s",
-              }}
-            >
+            <button type="submit" disabled={loading} style={{
+              background: loading ? "rgba(180,145,70,0.3)" : "linear-gradient(135deg,#b49146,#8a6c2f)",
+              border: "none", borderRadius: 8, padding: "11px 28px",
+              fontSize: 13, fontWeight: 500, letterSpacing: "0.08em", textTransform: "uppercase",
+              color: loading ? "rgba(255,255,255,0.4)" : "#080c14",
+              cursor: loading ? "not-allowed" : "pointer",
+            }}>
               {loading ? "Uploading…" : "Upload"}
             </button>
           </div>
         </form>
-      </div>
+      </motion.div>
 
-      {/* Documents table */}
-      <div style={{ ...card, padding: 0, overflow: "hidden" }}>
-        <div style={{ padding: "18px 24px", borderBottom: "1px solid rgba(180,145,70,0.1)" }}>
+      {/* Error */}
+      {error && <ErrorState message={error} onRetry={fetchDocs} />}
+
+      {/* Table */}
+      <motion.div
+        initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}
+        style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(180,145,70,0.1)", borderRadius: 14, overflow: "hidden" }}
+      >
+        <div style={{ padding: "18px 24px", borderBottom: "1px solid rgba(180,145,70,0.1)", display: "flex", alignItems: "center", gap: 10 }}>
           <span style={{ fontSize: 14, fontWeight: 600, color: "#e2e8f0" }}>Uploaded Documents</span>
-          <span style={{
-            marginLeft: 10, fontSize: 11, background: "rgba(180,145,70,0.12)",
-            color: "#b49146", borderRadius: 20, padding: "2px 10px",
-          }}>{docs.length}</span>
+          <span style={{ fontSize: 11, background: "rgba(180,145,70,0.12)", color: "#b49146", borderRadius: 20, padding: "2px 10px" }}>
+            {docs.length}
+          </span>
         </div>
 
-        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
-          <thead>
-            <tr style={{ background: "rgba(0,0,0,0.3)" }}>
-              {["Type", "Status", "Virus Scan", "Uploaded"].map((h) => (
-                <th key={h} style={{
-                  padding: "11px 20px", textAlign: "left",
-                  fontSize: 10, letterSpacing: "0.14em", textTransform: "uppercase",
-                  color: "rgba(180,145,70,0.6)", fontWeight: 500,
-                  borderBottom: "1px solid rgba(180,145,70,0.1)",
-                }}>{h}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {docs.map((d, i) => (
-              <tr key={d.id} style={{ borderBottom: "1px solid rgba(255,255,255,0.04)", background: i % 2 === 0 ? "transparent" : "rgba(255,255,255,0.01)" }}>
-                <td style={{ padding: "13px 20px", color: "#e2e8f0", textTransform: "capitalize" }}>
-                  {d.document_type.replace(/_/g, " ")}
-                </td>
-                <td style={{ padding: "13px 20px" }}><StatusBadge value={d.upload_status} /></td>
-                <td style={{ padding: "13px 20px" }}><StatusBadge value={d.virus_scan_status} /></td>
-                <td style={{ padding: "13px 20px", color: "rgba(200,210,230,0.45)", fontSize: 12 }}>
-                  {d.created_at?.slice(0, 10)}
-                </td>
+        {fetching ? (
+          <div style={{ padding: 20 }}><SkeletonTable rows={4} cols={4} /></div>
+        ) : docs.length === 0 && !error ? (
+          <EmptyState icon={FileText} title="No documents yet" subtitle="Upload your first identity document above." />
+        ) : (
+          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+            <thead>
+              <tr style={{ background: "rgba(0,0,0,0.3)" }}>
+                {["Type", "Status", "Virus Scan", "Uploaded"].map((h) => (
+                  <th key={h} style={{ padding: "11px 20px", textAlign: "left", fontSize: 10, letterSpacing: "0.14em", textTransform: "uppercase", color: "rgba(180,145,70,0.6)", fontWeight: 500, borderBottom: "1px solid rgba(180,145,70,0.1)" }}>{h}</th>
+                ))}
               </tr>
-            ))}
-            {docs.length === 0 && (
-              <tr>
-                <td colSpan={4} style={{ padding: "40px 20px", textAlign: "center", color: "rgba(200,210,230,0.3)", fontSize: 13 }}>
-                  No documents yet.
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
+            </thead>
+            <tbody>
+              {docs.map((d, i) => {
+                const us = STATUS_BADGE[d.upload_status] ?? { color: "#94a3b8", bg: "rgba(148,163,184,0.1)", border: "rgba(148,163,184,0.2)" };
+                const vs = STATUS_BADGE[d.virus_scan_status] ?? { color: "#94a3b8", bg: "rgba(148,163,184,0.1)", border: "rgba(148,163,184,0.2)" };
+                return (
+                  <motion.tr key={d.id} initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: i * 0.04 }}
+                    style={{ borderBottom: "1px solid rgba(255,255,255,0.04)", background: i % 2 === 0 ? "transparent" : "rgba(255,255,255,0.01)" }}>
+                    <td style={{ padding: "13px 20px", color: "#e2e8f0", textTransform: "capitalize" }}>{d.document_type.replace(/_/g, " ")}</td>
+                    <td style={{ padding: "13px 20px" }}><Badge label={d.upload_status} {...us} /></td>
+                    <td style={{ padding: "13px 20px" }}><Badge label={d.virus_scan_status} {...vs} /></td>
+                    <td style={{ padding: "13px 20px", color: "rgba(200,210,230,0.45)", fontSize: 12 }}>{d.created_at?.slice(0, 10)}</td>
+                  </motion.tr>
+                );
+              })}
+            </tbody>
+          </table>
+        )}
+      </motion.div>
     </div>
-  );
-}
-
-function StatusBadge({ value }: { value: string }) {
-  const styles: Record<string, React.CSSProperties> = {
-    uploaded:  { background: "rgba(52,211,153,0.12)", color: "#6ee7b7", border: "1px solid rgba(52,211,153,0.25)" },
-    clean:     { background: "rgba(52,211,153,0.12)", color: "#6ee7b7", border: "1px solid rgba(52,211,153,0.25)" },
-    verified:  { background: "rgba(52,211,153,0.12)", color: "#6ee7b7", border: "1px solid rgba(52,211,153,0.25)" },
-    pending:   { background: "rgba(251,191,36,0.1)",  color: "#fcd34d", border: "1px solid rgba(251,191,36,0.25)" },
-    failed:    { background: "rgba(248,113,113,0.1)", color: "#fca5a5", border: "1px solid rgba(248,113,113,0.25)" },
-    infected:  { background: "rgba(248,113,113,0.1)", color: "#fca5a5", border: "1px solid rgba(248,113,113,0.25)" },
-  };
-  const s = styles[value] ?? { background: "rgba(148,163,184,0.1)", color: "#94a3b8", border: "1px solid rgba(148,163,184,0.2)" };
-  return (
-    <span style={{ ...s, fontSize: 11, fontWeight: 500, padding: "3px 10px", borderRadius: 20, letterSpacing: "0.06em" }}>
-      {value}
-    </span>
   );
 }

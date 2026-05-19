@@ -1,6 +1,6 @@
 import uuid
-from sqlalchemy import BigInteger, Boolean, Column, ForeignKey, JSON, String
-from sqlalchemy.dialects.postgresql import TIMESTAMPTZ, UUID
+from sqlalchemy import BigInteger, Boolean, Column, DateTime, ForeignKey, JSON, String
+from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.sql import func
 from app.db.base import Base
 
@@ -19,7 +19,7 @@ class Document(Base):
     is_encrypted = Column(Boolean, default=True)
     virus_scan_status = Column(String(50), default="pending")
     upload_status = Column(String(50), default="uploaded")
-    created_at = Column(TIMESTAMPTZ, server_default=func.now())
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
 
 
 class DocumentVerification(Base):
@@ -33,5 +33,5 @@ class DocumentVerification(Base):
     textract_job_id = Column(String(255))
     verification_status = Column(String(50), default="pending")
     reviewed_by = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
-    reviewed_at = Column(TIMESTAMPTZ, nullable=True)
-    created_at = Column(TIMESTAMPTZ, server_default=func.now())
+    reviewed_at = Column(DateTime(timezone=True), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())

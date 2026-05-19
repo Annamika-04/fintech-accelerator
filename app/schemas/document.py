@@ -31,13 +31,18 @@ class DocumentConfirmRequest(BaseModel):
     file_hash: str
 
 
+from datetime import datetime
+from pydantic import BaseModel
+from uuid import UUID
+
+
 class DocumentOut(BaseModel):
     id: UUID
     document_type: str
     s3_key: str
     upload_status: str
     virus_scan_status: str
-    created_at: str
+    created_at: datetime | None
 
     model_config = {"from_attributes": True}
 

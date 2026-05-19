@@ -14,6 +14,7 @@ class Settings(BaseSettings):
 
     # Redis
     REDIS_URL: str = "redis://localhost:6379/0"
+    REDIS_URL_CELERY: str = ""  # defaults to REDIS_URL if not set
 
     # AWS
     AWS_REGION: str = "ap-south-1"
@@ -24,11 +25,11 @@ class Settings(BaseSettings):
     S3_BUCKET_NAME: str
     S3_PRESIGNED_URL_EXPIRY: int = 900
 
-    # Cognito
-    COGNITO_USER_POOL_ID: str
-    COGNITO_CLIENT_ID: str
-    COGNITO_REGION: str = "ap-south-1"
-    COGNITO_JWKS_URL: str
+    # Supabase
+    SUPABASE_URL: str = ""
+    SUPABASE_ANON_KEY: str = ""
+    SUPABASE_SERVICE_ROLE_KEY: str = ""
+    SUPABASE_JWT_SECRET: str = ""
 
     # Rekognition
     FACE_SIMILARITY_THRESHOLD: float = 90.0

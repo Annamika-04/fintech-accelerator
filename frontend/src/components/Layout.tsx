@@ -1,15 +1,16 @@
 import { NavLink, Outlet } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
+import { FileText, ScanFace, Search, BarChart2, FolderOpen, Users } from "lucide-react";
 
 const links = [
-  { to: "/documents", label: "Documents", icon: "📄" },
-  { to: "/face-verification", label: "Face Verification", icon: "🪪" },
-  { to: "/aml", label: "AML Screening", icon: "🔍" },
-  { to: "/risk", label: "Risk Scoring", icon: "📊" },
-  { to: "/cases", label: "Cases", icon: "📁" },
+  { to: "/documents",        label: "Documents",        Icon: FileText },
+  { to: "/face-verification", label: "Face Verification", Icon: ScanFace },
+  { to: "/aml",              label: "AML Screening",     Icon: Search },
+  { to: "/risk",             label: "Risk Scoring",      Icon: BarChart2 },
+  { to: "/cases",            label: "Cases",             Icon: FolderOpen },
 ];
 
-const adminLinks = [{ to: "/users", label: "Users", icon: "👥" }];
+const adminLinks = [{ to: "/users", label: "Users", Icon: Users }];
 
 export default function Layout() {
   const { user, logout } = useAuth();
@@ -58,7 +59,7 @@ export default function Layout() {
           <div style={{ fontSize: 9, color: "rgba(180,145,70,0.4)", letterSpacing: "0.15em", textTransform: "uppercase", padding: "8px 10px 6px" }}>
             Navigation
           </div>
-          {links.map(({ to, label, icon }) => (
+          {links.map(({ to, label, Icon }) => (
             <NavLink key={to} to={to} style={({ isActive }) => ({
               display: "flex", alignItems: "center", gap: 10,
               padding: "9px 12px",
@@ -71,7 +72,7 @@ export default function Layout() {
               borderLeft: isActive ? "2px solid #b49146" : "2px solid transparent",
               transition: "all 0.15s",
             })}>
-              <span style={{ fontSize: 14 }}>{icon}</span>
+              <Icon size={15} />
               {label}
             </NavLink>
           ))}
@@ -81,7 +82,7 @@ export default function Layout() {
               <div style={{ fontSize: 9, color: "rgba(180,145,70,0.4)", letterSpacing: "0.15em", textTransform: "uppercase", padding: "14px 10px 6px" }}>
                 Admin
               </div>
-              {adminLinks.map(({ to, label, icon }) => (
+              {adminLinks.map(({ to, label, Icon }) => (
                 <NavLink key={to} to={to} style={({ isActive }) => ({
                   display: "flex", alignItems: "center", gap: 10,
                   padding: "9px 12px",
@@ -94,7 +95,7 @@ export default function Layout() {
                   borderLeft: isActive ? "2px solid #b49146" : "2px solid transparent",
                   transition: "all 0.15s",
                 })}>
-                  <span style={{ fontSize: 14 }}>{icon}</span>
+                  <Icon size={15} />
                   {label}
                 </NavLink>
               ))}
@@ -114,7 +115,7 @@ export default function Layout() {
           <div style={{ fontSize: 10, color: "#b49146", textTransform: "capitalize", letterSpacing: "0.08em", marginBottom: 10 }}>
             {user?.role?.replace(/_/g, " ")}
           </div>
-          <button onClick={logout} style={{
+          <button onClick={() => logout()} style={{
             fontSize: 11, color: "rgba(220,100,100,0.8)", background: "none",
             border: "1px solid rgba(220,100,100,0.2)", borderRadius: 5,
             padding: "4px 10px", cursor: "pointer", letterSpacing: "0.06em",
