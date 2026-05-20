@@ -6,6 +6,7 @@ POST /auth/verify-otp  — verify OTP, issue JWT, create/restore user
 """
 import re
 import uuid
+import socket
 from datetime import datetime, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
@@ -162,35 +163,64 @@ async def verify_otp_endpoint(
         )
 
     # 2. Find or create user
-    result = await db.execute(select(User).where(User.phone_number == payload.phone))
-    user = result.scalar_one_or_none()
+    try:
+        result = await db.execute(select(User).where(User.phone_number == payload.phone))
+        user = result.scalar_one_or_none()
+    except (socket.gaierror, OSError) as e:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Database connection failed. Please try again.",
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Database error occurred.",
+        )
 
     is_new = user is None
-    if is_new:
-        user = User(
-            phone_number=payload.phone,
-            phone_verified=True,
-            role=UserRole.customer,
-            is_active=True,
+    try:
+        if is_new:
+            user = User(
+                phone_number=payload.phone,
+                phone_verified=True,
+                role=UserRole.customer,
+                is_active=True,
+            )
+            db.add(user)
+            await db.commit()
+            await db.refresh(user)
+        else:
+            if not user.is_active:
+                raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Account is inactive.")
+            user.phone_verified = True
+            await db.commit()
+            await db.refresh(user)
+    except HTTPException:
+        raise
+    except (socket.gaierror, OSError):
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Database connection failed. Please try again.",
         )
-        db.add(user)
-        await db.commit()
-        await db.refresh(user)
-    else:
-        if not user.is_active:
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Account is inactive.")
-        user.phone_verified = True
-        await db.commit()
-        await db.refresh(user)
+    except Exception:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to create or update user.",
+        )
 
     # 3. Determine onboarding status
-    from sqlalchemy import text
-    row = await db.execute(
-        text("SELECT current_status FROM onboarding_state WHERE user_id = :uid LIMIT 1"),
-        {"uid": str(user.id)},
-    )
-    ob_row = row.fetchone()
-    onboarding_status = ob_row[0] if ob_row else "REGISTERED"
+    try:
+        from sqlalchemy import text
+        row = await db.execute(
+            text("SELECT current_status FROM onboarding_state WHERE user_id = :uid LIMIT 1"),
+            {"uid": str(user.id)},
+        )
+        ob_row = row.fetchone()
+        onboarding_status = ob_row[0] if ob_row else "REGISTERED"
+    except (socket.gaierror, OSError):
+        onboarding_status = "REGISTERED"
+    except Exception:
+        onboarding_status = "REGISTERED"
 
     # 4. Issue tokens
     access_token = _issue_access_token(user)
