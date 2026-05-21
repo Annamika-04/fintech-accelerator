@@ -13,15 +13,19 @@ from fastapi import APIRouter, Depends, HTTPException, Request, status
 from jose import jwt
 from pydantic import BaseModel, field_validator
 from sqlalchemy import select
+from sqlalchemy.exc import DBAPIError, OperationalError, SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_audit_meta
 from app.core.config import settings
+from app.core.logging import get_logger
 from app.db.session import get_db
 from app.models.user import User, UserRole
+from app.services.kyc_session_service import ensure_active_kyc_session, ensure_tenant_for_user
 from app.services.otp_service import send_otp, verify_otp
 
 router = APIRouter(prefix="/auth", tags=["Mobile OTP Auth"])
+logger = get_logger(__name__)
 
 # ── Schemas ───────────────────────────────────────────────────────────────────
 
@@ -68,6 +72,7 @@ class VerifyOtpRequest(BaseModel):
 
 class UserInfo(BaseModel):
     id: str
+    tenant_id: str | None = None
     phone: str
     role: str
 
@@ -82,10 +87,19 @@ class VerifyOtpResponse(BaseModel):
 
 # ── JWT helpers ───────────────────────────────────────────────────────────────
 
-def _issue_access_token(user: User) -> str:
+def _phone_supabase_uid(phone: str) -> str:
+    return f"otp:{phone}"
+
+
+def _phone_email(phone: str) -> str:
+    digits = "".join(ch for ch in phone if ch.isdigit())
+    return f"otp-{digits}@example.com"
+
+
+def _issue_access_token(user: User, phone: str) -> str:
     payload = {
         "sub": str(user.id),
-        "phone": user.phone_number,
+        "phone": phone,
         "role": user.role.value,
         "iss": "veritasaml-otp",
         "exp": datetime.utcnow() + timedelta(hours=8),
@@ -164,25 +178,39 @@ async def verify_otp_endpoint(
 
     # 2. Find or create user
     try:
-        result = await db.execute(select(User).where(User.phone_number == payload.phone))
+        result = await db.execute(
+            select(User).where(User.supabase_uid == _phone_supabase_uid(payload.phone))
+        )
         user = result.scalar_one_or_none()
-    except (socket.gaierror, OSError) as e:
+    except (socket.gaierror, OSError, OperationalError, DBAPIError) as e:
+        logger.error(
+            "otp_verify_db_lookup_failed",
+            phone=payload.phone,
+            error=str(e),
+            error_type=type(e).__name__,
+        )
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Database connection failed. Please try again.",
         )
-    except Exception as e:
+    except SQLAlchemyError as e:
+        logger.error(
+            "otp_verify_db_lookup_sqlalchemy_failed",
+            phone=payload.phone,
+            error=str(e),
+            error_type=type(e).__name__,
+        )
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Database error occurred.",
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Database temporarily unavailable. Please try again.",
         )
 
     is_new = user is None
     try:
         if is_new:
             user = User(
-                phone_number=payload.phone,
-                phone_verified=True,
+                supabase_uid=_phone_supabase_uid(payload.phone),
+                email=_phone_email(payload.phone),
                 role=UserRole.customer,
                 is_active=True,
             )
@@ -192,20 +220,35 @@ async def verify_otp_endpoint(
         else:
             if not user.is_active:
                 raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Account is inactive.")
-            user.phone_verified = True
             await db.commit()
             await db.refresh(user)
+        await ensure_tenant_for_user(db, user)
+        session = await ensure_active_kyc_session(db, user)
+        await db.commit()
+        await db.refresh(user)
     except HTTPException:
         raise
-    except (socket.gaierror, OSError):
+    except (socket.gaierror, OSError, OperationalError, DBAPIError) as e:
+        logger.error(
+            "otp_verify_db_write_failed",
+            phone=payload.phone,
+            error=str(e),
+            error_type=type(e).__name__,
+        )
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Database connection failed. Please try again.",
         )
-    except Exception:
+    except SQLAlchemyError as e:
+        logger.error(
+            "otp_verify_db_write_sqlalchemy_failed",
+            phone=payload.phone,
+            error=str(e),
+            error_type=type(e).__name__,
+        )
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to create or update user.",
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Database temporarily unavailable. Please try again.",
         )
 
     # 3. Determine onboarding status
@@ -223,7 +266,7 @@ async def verify_otp_endpoint(
         onboarding_status = "REGISTERED"
 
     # 4. Issue tokens
-    access_token = _issue_access_token(user)
+    access_token = _issue_access_token(user, payload.phone)
     refresh_token = _issue_refresh_token(user)
 
     # 5. Audit log
@@ -232,6 +275,6 @@ async def verify_otp_endpoint(
     return VerifyOtpResponse(
         access_token=access_token,
         refresh_token=refresh_token,
-        user=UserInfo(id=str(user.id), phone=user.phone_number, role=user.role.value),
+        user=UserInfo(id=str(user.id), tenant_id=str(user.tenant_id) if user.tenant_id else None, phone=payload.phone, role=user.role.value),
         onboarding_status=onboarding_status,
     )

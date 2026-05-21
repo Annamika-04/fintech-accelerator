@@ -12,8 +12,9 @@ class UserCreate(BaseModel):
 
 class UserOut(BaseModel):
     id: UUID
-    email: EmailStr | None = None
-    phone_number: str | None = None
+    tenant_id: UUID | None = None
+    supabase_uid: str
+    email: str
     role: UserRole
     is_active: bool
     mfa_enabled: bool

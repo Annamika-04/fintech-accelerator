@@ -41,7 +41,9 @@ def verify_config():
         if not settings.SUPABASE_URL:
             print("[WARN] SUPABASE_URL not set (optional)")
 
-        print(f"[OK] DATABASE_URL configured: {settings.DATABASE_URL[:40]}...")
+        print(f"[OK] DATABASE_URL configured: {settings.database_url_with_defaults()[:40]}...")
+        if settings.database_connect_args():
+            print(f"[OK] Database connect args configured: {settings.database_connect_args()}")
         return True
     except Exception as e:
         print(f"[FAIL] Config error: {e}")

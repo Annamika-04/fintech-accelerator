@@ -27,7 +27,8 @@ async def run_migrations():
 
     # Create async engine
     engine = create_async_engine(
-        settings.DATABASE_URL,
+        settings.database_url_with_defaults(),
+        connect_args=settings.database_connect_args(),
         echo=False,
     )
 
@@ -103,7 +104,11 @@ async def verify_schema():
     print("Verifying Schema")
     print("=" * 70 + "\n")
 
-    engine = create_async_engine(settings.DATABASE_URL, echo=False)
+    engine = create_async_engine(
+        settings.database_url_with_defaults(),
+        connect_args=settings.database_connect_args(),
+        echo=False,
+    )
 
     try:
         async with engine.connect() as conn:

@@ -5,11 +5,15 @@ from app.core.config import settings
 from app.core.logging import setup_logging
 from app.core.middleware import RequestLoggingMiddleware
 from app.api.v1 import auth, documents, face_verification, aml, risk, cases, dev_auth, onboarding, mobile_auth
+from app.db.bootstrap import ensure_database_schema
+from app.db.session import engine
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     setup_logging()
+    if settings.AUTO_SYNC_DB_SCHEMA:
+        await ensure_database_schema(engine)
     yield
 
 

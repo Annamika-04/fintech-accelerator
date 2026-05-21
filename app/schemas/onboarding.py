@@ -106,6 +106,8 @@ class DirectorOut(BaseModel):
 
 class OnboardingStateOut(BaseModel):
     user_id: UUID
+    tenant_id: UUID | None = None
+    kyc_session_id: UUID | None = None
     onboarding_type: OnboardingType | None
     current_status: OnboardingStatus
     profile_id: UUID | None
@@ -120,3 +122,35 @@ class OnboardingStateOut(BaseModel):
 
 class SelectTypeRequest(BaseModel):
     onboarding_type: OnboardingType
+
+
+class KYCSessionOut(BaseModel):
+    id: UUID
+    tenant_id: UUID
+    user_id: UUID
+    onboarding_id: str
+    current_step: str
+    status: str
+    is_active: bool
+    version: int
+    last_activity_at: datetime | None
+
+    model_config = {"from_attributes": True}
+
+
+class KYCStepStateOut(BaseModel):
+    step_code: str
+    status: str
+    attempt_count: int
+    payload_snapshot: dict | None
+    last_error_code: str | None
+    last_error_message: str | None
+    updated_at: datetime | None
+
+    model_config = {"from_attributes": True}
+
+
+class OnboardingResumeOut(BaseModel):
+    state: OnboardingStateOut
+    session: KYCSessionOut
+    steps: list[KYCStepStateOut]

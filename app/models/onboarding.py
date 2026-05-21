@@ -48,6 +48,8 @@ class IndividualProfile(Base):
     __tablename__ = "individual_profiles"
 
     id                   = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id            = Column(UUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=True, index=True)
+    kyc_session_id       = Column(UUID(as_uuid=True), ForeignKey("kyc_sessions.id", ondelete="SET NULL"), nullable=True, index=True)
     user_id              = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), unique=True, nullable=False, index=True)
     full_name            = Column(String(255), nullable=False)
     date_of_birth        = Column(Date)
@@ -67,6 +69,8 @@ class CorporateProfile(Base):
     __tablename__ = "corporate_profiles"
 
     id                       = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id                = Column(UUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=True, index=True)
+    kyc_session_id           = Column(UUID(as_uuid=True), ForeignKey("kyc_sessions.id", ondelete="SET NULL"), nullable=True, index=True)
     user_id                  = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), unique=True, nullable=False, index=True)
     company_name             = Column(String(255), nullable=False)
     registration_number      = Column(String(100))
@@ -84,6 +88,8 @@ class CorporateDirector(Base):
     __tablename__ = "corporate_directors"
 
     id               = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id        = Column(UUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=True, index=True)
+    kyc_session_id   = Column(UUID(as_uuid=True), ForeignKey("kyc_sessions.id", ondelete="SET NULL"), nullable=True, index=True)
     corporate_id     = Column(UUID(as_uuid=True), ForeignKey("corporate_profiles.id", ondelete="CASCADE"), nullable=False, index=True)
     full_name        = Column(String(255), nullable=False)
     role             = Column(String(100))
@@ -100,6 +106,8 @@ class OnboardingState(Base):
     __tablename__ = "onboarding_state"
 
     id               = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id        = Column(UUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=True, index=True)
+    kyc_session_id   = Column(UUID(as_uuid=True), ForeignKey("kyc_sessions.id", ondelete="SET NULL"), nullable=True, index=True)
     user_id          = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), unique=True, nullable=False, index=True)
     onboarding_type  = Column(SAEnum(OnboardingType, name="onboarding_type"), nullable=True)
     current_status   = Column(SAEnum(OnboardingStatus, name="onboarding_status"), nullable=False, default=OnboardingStatus.REGISTERED)

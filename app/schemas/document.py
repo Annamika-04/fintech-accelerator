@@ -24,11 +24,19 @@ class PresignedURLResponse(BaseModel):
     upload_url: str
     s3_key: str
     document_id: UUID
+    upload_headers: dict[str, str]
 
 
 class DocumentConfirmRequest(BaseModel):
     document_id: UUID
     file_hash: str
+
+
+class DirectUploadResponse(BaseModel):
+    document_id: UUID
+    s3_key: str
+    upload_status: str
+    verification_status: str
 
 
 from datetime import datetime
@@ -38,6 +46,9 @@ from uuid import UUID
 
 class DocumentOut(BaseModel):
     id: UUID
+    tenant_id: UUID | None = None
+    kyc_session_id: UUID | None = None
+    onboarding_id: str | None = None
     document_type: str
     s3_key: str
     upload_status: str

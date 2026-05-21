@@ -17,6 +17,8 @@ class RiskScore(Base):
     __tablename__ = "risk_scores"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id = Column(UUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=True, index=True)
+    kyc_session_id = Column(UUID(as_uuid=True), ForeignKey("kyc_sessions.id", ondelete="SET NULL"), nullable=True, index=True)
     user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False, index=True)
     kyc_risk = Column(Integer, default=0)
     aml_risk = Column(Integer, default=0)
@@ -35,6 +37,8 @@ class Case(Base):
     __tablename__ = "cases"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id = Column(UUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=True, index=True)
+    kyc_session_id = Column(UUID(as_uuid=True), ForeignKey("kyc_sessions.id", ondelete="SET NULL"), nullable=True, index=True)
     user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), index=True)
     case_type = Column(String(50))
     status = Column(String(50), default="open", index=True)
@@ -51,6 +55,8 @@ class AuditLog(Base):
     __tablename__ = "audit_logs"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id = Column(UUID(as_uuid=True), ForeignKey("tenants.id", ondelete="SET NULL"), nullable=True, index=True)
+    kyc_session_id = Column(UUID(as_uuid=True), ForeignKey("kyc_sessions.id", ondelete="SET NULL"), nullable=True, index=True)
     actor_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), index=True)
     action = Column(String(100), nullable=False)
     resource_type = Column(String(100))
@@ -65,6 +71,8 @@ class Alert(Base):
     __tablename__ = "alerts"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id = Column(UUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=True, index=True)
+    kyc_session_id = Column(UUID(as_uuid=True), ForeignKey("kyc_sessions.id", ondelete="SET NULL"), nullable=True, index=True)
     user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), index=True)
     alert_type = Column(String(100), nullable=False)
     severity = Column(String(20), nullable=False)

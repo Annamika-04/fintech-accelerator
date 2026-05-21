@@ -2,9 +2,10 @@ import { useEffect, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { ShieldCheck } from "lucide-react";
 import { Toaster } from "react-hot-toast";
-import { getOnboardingStatus } from "../../api/client";
+import { getOnboardingResume } from "../../api/client";
 import { useOnboardingStore, OnboardingType } from "../../store/onboardingStore";
 import { Spinner } from "../../components/ui";
+import { useAuth } from "../../context/AuthContext";
 import TypeSelectionPage from "./TypeSelectionPage";
 import IndividualProfilePage from "./IndividualProfilePage";
 import CorporateProfilePage from "./CorporateProfilePage";
@@ -17,37 +18,65 @@ const INDIVIDUAL_STEPS = ["Account Type", "Personal Info", "Documents", "Selfie"
 const CORPORATE_STEPS  = ["Account Type", "Company Info", "Documents", "Selfie", "Status"];
 
 export default function OnboardingWizard() {
-  const { currentStep, onboardingType, serverStatus, setStep, setServerStatus, setOnboardingType } = useOnboardingStore();
+  const { user } = useAuth();
+  const {
+    ownerUserId, currentStep, onboardingType, setStep, setServerStatus,
+    setOnboardingType, setOwnerUserId, reset,
+  } = useOnboardingStore();
   const [bootstrapped, setBootstrapped] = useState(false);
+  const [maxUnlockedStep, setMaxUnlockedStep] = useState(0);
+
+  const stepMap: Record<string, number> = {
+    REGISTERED: 0,
+    TYPE_SELECTED: 1,
+    PROFILE_COMPLETED: 2,
+    DOCUMENTS_UPLOADED: 3,
+    KYC_PENDING: 4,
+    AML_PENDING: 4,
+    UNDER_REVIEW: 4,
+    APPROVED: 4,
+    REJECTED: 4,
+    FROZEN: 4,
+  };
 
   // On mount: sync with server state to resume interrupted sessions
   useEffect(() => {
-    getOnboardingStatus()
-      .then((res) => {
-        const { current_status, onboarding_type } = res.data;
-        setServerStatus(current_status);
-        if (onboarding_type) setOnboardingType(onboarding_type as OnboardingType);
+    if (user?.id && ownerUserId && ownerUserId !== user.id) {
+      reset();
+    }
 
-        // Map server status → wizard step
-        const stepMap: Record<string, number> = {
-          REGISTERED: 0, TYPE_SELECTED: 1,
-          PROFILE_COMPLETED: 2, DOCUMENTS_UPLOADED: 3,
-          KYC_PENDING: 4, AML_PENDING: 4,
-          UNDER_REVIEW: 4, APPROVED: 4, REJECTED: 4, FROZEN: 4,
-        };
+    getOnboardingResume()
+      .then((res) => {
+        const { state } = res.data;
+        const { current_status, onboarding_type, profile_id, user_id } = state;
+        setOwnerUserId(user_id);
+        setServerStatus(current_status);
+        setOnboardingType((onboarding_type as OnboardingType | null) ?? null);
+        if (profile_id) {
+          useOnboardingStore.getState().setProfileId(profile_id);
+        }
         const resumeStep = stepMap[current_status] ?? 0;
-        // Only advance if store step is behind server
-        if (resumeStep > currentStep) setStep(resumeStep);
+        setStep(resumeStep);
+        setMaxUnlockedStep(resumeStep);
       })
       .catch(() => {})
       .finally(() => setBootstrapped(true));
-  }, []);
+  }, [user?.id]);
 
   const steps = onboardingType === "corporate" ? CORPORATE_STEPS : INDIVIDUAL_STEPS;
   const progress = ((currentStep) / (steps.length - 1)) * 100;
 
   const goBack = () => setStep(Math.max(0, currentStep - 1));
-  const goNext = () => setStep(Math.min(steps.length - 1, currentStep + 1));
+  const goNext = () => {
+    const next = Math.min(steps.length - 1, currentStep + 1);
+    setStep(next);
+    setMaxUnlockedStep((prev) => Math.max(prev, next));
+  };
+  const goToStep = (target: number) => {
+    if (target <= maxUnlockedStep) {
+      setStep(target);
+    }
+  };
 
   if (!bootstrapped) {
     return (
@@ -87,9 +116,15 @@ export default function OnboardingWizard() {
         {steps.map((label, i) => {
           const isDone = i < currentStep;
           const isActive = i === currentStep;
+          const isClickable = i <= maxUnlockedStep;
           return (
             <div key={label} style={{ display: "flex", alignItems: "center" }}>
-              <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 6, minWidth: 80 }}>
+              <button
+                type="button"
+                onClick={() => goToStep(i)}
+                disabled={!isClickable}
+                style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 6, minWidth: 80, background: "transparent", border: "none", padding: 0, cursor: isClickable ? "pointer" : "not-allowed", opacity: isClickable ? 1 : 0.7 }}
+              >
                 <div style={{
                   width: 28, height: 28, borderRadius: "50%",
                   background: isDone ? "#6366f1" : isActive ? "rgba(99,102,241,0.15)" : "rgba(255,255,255,0.04)",
@@ -103,7 +138,7 @@ export default function OnboardingWizard() {
                 <span style={{ fontSize: 10, color: isActive ? "#818cf8" : isDone ? "#64748b" : "#334155", fontWeight: isActive ? 600 : 400, whiteSpace: "nowrap" }}>
                   {label}
                 </span>
-              </div>
+              </button>
               {i < steps.length - 1 && (
                 <div style={{ width: 40, height: 1, background: i < currentStep ? "rgba(99,102,241,0.4)" : "rgba(255,255,255,0.06)", margin: "0 4px", marginBottom: 20 }} />
               )}

@@ -33,6 +33,15 @@ export const getPresignedUrl = (data: {
 export const confirmUpload = (data: { document_id: string; file_hash: string }) =>
   api.post("/documents/confirm", data);
 
+export const uploadDocumentDirect = (documentType: string, file: File) => {
+  const formData = new FormData();
+  formData.append("document_type", documentType);
+  formData.append("file", file);
+  return api.post("/documents/upload", formData, {
+    headers: { "Content-Type": "multipart/form-data" },
+  });
+};
+
 export const listDocuments = () => api.get("/documents/");
 
 // ── Face Verification ─────────────────────────────────────────────────────────
@@ -72,6 +81,7 @@ export const resolveCase = (caseId: string) => api.patch(`/cases/${caseId}/resol
 
 // ── Onboarding ────────────────────────────────────────────────────────────────
 export const getOnboardingStatus = () => api.get("/onboarding/status");
+export const getOnboardingResume = () => api.get("/onboarding/resume");
 
 export const selectOnboardingType = (onboarding_type: "individual" | "corporate") =>
   api.post("/onboarding/select-type", { onboarding_type });

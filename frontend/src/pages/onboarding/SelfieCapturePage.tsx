@@ -1,7 +1,7 @@
-import { useState, useRef, useCallback } from "react";
+import { useState, useRef, useCallback, useEffect } from "react";
 import { motion } from "framer-motion";
 import { Camera, Upload, CheckCircle2, ArrowRight, ArrowLeft, ScanFace } from "lucide-react";
-import { getPresignedUrl, confirmUpload, submitFaceVerification, triggerKYC } from "../../api/client";
+import { getPresignedUrl, confirmUpload, submitFaceVerification, triggerKYC, uploadDocumentDirect } from "../../api/client";
 import { useOnboardingStore } from "../../store/onboardingStore";
 import { Spinner } from "../../components/ui";
 import toast from "react-hot-toast";
@@ -10,33 +10,46 @@ import axios from "axios";
 interface Props { onBack: () => void; onNext: () => void; }
 
 export default function SelfieCapturePage({ onBack, onNext }: Props) {
-  const { setServerStatus, nextStep } = useOnboardingStore();
+  const { setServerStatus } = useOnboardingStore();
   const [selfieFile, setSelfieFile] = useState<File | null>(null);
   const [selfiePreview, setSelfiePreview] = useState<string | null>(null);
   const [selfieS3Key, setSelfieS3Key] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [advancing, setAdvancing] = useState(false);
+  const [cameraActive, setCameraActive] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
-  const [cameraActive, setCameraActive] = useState(false);
   const streamRef = useRef<MediaStream | null>(null);
+  const preferServerUpload = typeof window !== "undefined" && window.location.hostname === "localhost";
+
+  const stopCamera = useCallback(() => {
+    streamRef.current?.getTracks().forEach((track) => track.stop());
+    streamRef.current = null;
+    setCameraActive(false);
+  }, []);
 
   const startCamera = async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" } });
       streamRef.current = stream;
-      if (videoRef.current) videoRef.current.srcObject = stream;
+      setSelfiePreview(null);
       setCameraActive(true);
     } catch {
       toast.error("Camera access denied. Please upload a selfie instead.");
     }
   };
 
-  const stopCamera = useCallback(() => {
-    streamRef.current?.getTracks().forEach((t) => t.stop());
-    setCameraActive(false);
-  }, []);
+  useEffect(() => {
+    if (!cameraActive || !videoRef.current || !streamRef.current) return;
+
+    videoRef.current.srcObject = streamRef.current;
+    videoRef.current.play().catch(() => {
+      toast.error("Unable to start the camera preview. Please retry or upload a photo.");
+    });
+  }, [cameraActive]);
+
+  useEffect(() => stopCamera, [stopCamera]);
 
   const capturePhoto = () => {
     if (!videoRef.current) return;
@@ -49,6 +62,7 @@ export default function SelfieCapturePage({ onBack, onNext }: Props) {
       const file = new File([blob], "selfie.jpg", { type: "image/jpeg" });
       setSelfieFile(file);
       setSelfiePreview(canvas.toDataURL("image/jpeg"));
+      setSubmitted(false);
       stopCamera();
     }, "image/jpeg", 0.9);
   };
@@ -56,27 +70,60 @@ export default function SelfieCapturePage({ onBack, onNext }: Props) {
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    stopCamera();
     setSelfieFile(file);
     setSelfiePreview(URL.createObjectURL(file));
+    setSubmitted(false);
   };
 
   const uploadSelfie = async () => {
     if (!selfieFile) return;
     setUploading(true);
     try {
+      if (preferServerUpload) {
+        const { data } = await uploadDocumentDirect("passport", selfieFile);
+        setSelfieS3Key(data.s3_key);
+        setSubmitted(true);
+        toast.success("Selfie uploaded through secure server path");
+        return;
+      }
+
       const { data } = await getPresignedUrl({
         document_type: "passport",
         filename: selfieFile.name,
         content_type: selfieFile.type,
         file_size_bytes: selfieFile.size,
       });
-      await axios.put(data.upload_url, selfieFile, { headers: { "Content-Type": selfieFile.type } });
+      await axios.put(data.upload_url, selfieFile, { headers: data.upload_headers });
       await confirmUpload({ document_id: data.document_id, file_hash: crypto.randomUUID() });
       setSelfieS3Key(data.s3_key);
       setSubmitted(true);
       toast.success("Selfie uploaded successfully");
-    } catch {
-      toast.error("Upload failed. Please try again.");
+    } catch (err) {
+      const shouldFallback =
+        axios.isAxiosError(err) &&
+        (!err.response || err.message === "Network Error");
+
+      if (shouldFallback) {
+        try {
+          const { data } = await uploadDocumentDirect("passport", selfieFile);
+          setSelfieS3Key(data.s3_key);
+          setSubmitted(true);
+          toast.success("Selfie uploaded through secure server fallback");
+          return;
+        } catch (fallbackErr) {
+          const msg = axios.isAxiosError(fallbackErr)
+            ? fallbackErr.response?.data?.message || fallbackErr.response?.data?.detail || fallbackErr.message
+            : "Upload failed";
+          toast.error(`Upload failed: ${msg}`);
+          return;
+        }
+      }
+
+      const msg = axios.isAxiosError(err)
+        ? err.response?.data?.message || err.response?.data?.detail || err.message
+        : "Upload failed";
+      toast.error(`Upload failed: ${msg}`);
     } finally {
       setUploading(false);
     }
@@ -86,12 +133,9 @@ export default function SelfieCapturePage({ onBack, onNext }: Props) {
     if (!selfieS3Key) return toast.error("Please upload your selfie first");
     setAdvancing(true);
     try {
-      // Submit face verification job
       await submitFaceVerification({ selfie_s3_key: selfieS3Key, id_document_s3_key: selfieS3Key });
-      // Advance state machine
       const res = await triggerKYC();
       setServerStatus(res.data.current_status);
-      nextStep();
       onNext();
     } catch {
       toast.error("Failed to submit. Please try again.");
@@ -101,9 +145,7 @@ export default function SelfieCapturePage({ onBack, onNext }: Props) {
   };
 
   return (
-    <motion.div initial={{ opacity: 0, x: 30 }} animate={{ opacity: 1, x: 0 }}
-      style={{ maxWidth: 560, margin: "0 auto", padding: "48px 24px" }}>
-
+    <motion.div initial={{ opacity: 0, x: 30 }} animate={{ opacity: 1, x: 0 }} style={{ maxWidth: 560, margin: "0 auto", padding: "48px 24px" }}>
       <div style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 32 }}>
         <div style={{ width: 44, height: 44, borderRadius: 12, background: "rgba(99,102,241,0.1)", border: "1px solid rgba(99,102,241,0.2)", display: "flex", alignItems: "center", justifyContent: "center" }}>
           <ScanFace size={20} color="#818cf8" />
@@ -114,10 +156,9 @@ export default function SelfieCapturePage({ onBack, onNext }: Props) {
         </div>
       </div>
 
-      {/* Camera / Preview area */}
       <div style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.06)", borderRadius: 16, overflow: "hidden", marginBottom: 20, aspectRatio: "4/3", display: "flex", alignItems: "center", justifyContent: "center", position: "relative" }}>
         {cameraActive && (
-          <video ref={videoRef} autoPlay playsInline muted style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+          <video ref={videoRef} autoPlay playsInline muted style={{ width: "100%", height: "100%", objectFit: "cover", background: "#020617" }} />
         )}
         {selfiePreview && !cameraActive && (
           <img src={selfiePreview} alt="Selfie preview" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
@@ -136,7 +177,6 @@ export default function SelfieCapturePage({ onBack, onNext }: Props) {
         )}
       </div>
 
-      {/* Liveness hints */}
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, marginBottom: 24 }}>
         {["Face clearly visible", "Good lighting", "No glasses/hat"].map((hint) => (
           <div key={hint} style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.06)", borderRadius: 8, padding: "8px 10px", textAlign: "center", fontSize: 11, color: "#475569" }}>
@@ -145,7 +185,6 @@ export default function SelfieCapturePage({ onBack, onNext }: Props) {
         ))}
       </div>
 
-      {/* Action buttons */}
       <div style={{ display: "flex", gap: 10, marginBottom: 16 }}>
         {!cameraActive ? (
           <button onClick={startCamera} style={{ flex: 1, padding: "12px", background: "rgba(99,102,241,0.1)", border: "1px solid rgba(99,102,241,0.2)", borderRadius: 10, color: "#818cf8", fontSize: 13, fontWeight: 500, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
@@ -164,7 +203,7 @@ export default function SelfieCapturePage({ onBack, onNext }: Props) {
 
       {selfieFile && !submitted && (
         <button onClick={uploadSelfie} disabled={uploading} style={{ width: "100%", padding: "12px", background: "rgba(34,197,94,0.1)", border: "1px solid rgba(34,197,94,0.2)", borderRadius: 10, color: "#22c55e", fontSize: 13, fontWeight: 600, cursor: "pointer", marginBottom: 16, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
-        {uploading ? <><Spinner size={14} color="#22c55e" /> Uploading…</> : <><CheckCircle2 size={15} /> Confirm & Upload Selfie</>}
+          {uploading ? <><Spinner size={14} color="#22c55e" /> Uploading...</> : <><CheckCircle2 size={15} /> Confirm & Upload Selfie</>}
         </button>
       )}
 
@@ -173,7 +212,7 @@ export default function SelfieCapturePage({ onBack, onNext }: Props) {
           <ArrowLeft size={15} /> Back
         </button>
         <button onClick={handleContinue} disabled={!submitted || advancing} style={{ flex: 1, padding: "13px 20px", background: submitted ? "#6366f1" : "rgba(255,255,255,0.05)", border: "none", borderRadius: 10, color: submitted ? "#fff" : "#475569", fontSize: 14, fontWeight: 600, cursor: submitted ? "pointer" : "not-allowed", display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
-        {advancing ? <><Spinner size={14} color="#fff" /> Submitting…</> : <> Submit for Verification <ArrowRight size={15} /></>}
+          {advancing ? <><Spinner size={14} color="#fff" /> Submitting...</> : <> Submit for Verification <ArrowRight size={15} /></>}
         </button>
       </div>
     </motion.div>

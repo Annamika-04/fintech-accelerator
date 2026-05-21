@@ -36,7 +36,7 @@ const options = [
 export default function TypeSelectionPage({ onSelect }: Props) {
   const [selected, setSelected] = useState<OnboardingType | null>(null);
   const [loading, setLoading] = useState(false);
-  const { setOnboardingType, setServerStatus, nextStep } = useOnboardingStore();
+  const { setOnboardingType, setServerStatus } = useOnboardingStore();
 
   const handleContinue = async () => {
     if (!selected) return;
@@ -45,7 +45,6 @@ export default function TypeSelectionPage({ onSelect }: Props) {
       const res = await selectOnboardingType(selected);
       setOnboardingType(selected);
       setServerStatus(res.data.current_status);
-      nextStep();
       onSelect(selected);
     } catch {
       toast.error("Failed to save selection. Please try again.");

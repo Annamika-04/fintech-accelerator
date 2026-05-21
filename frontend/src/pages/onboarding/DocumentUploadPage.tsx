@@ -1,7 +1,7 @@
 import { useState, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Upload, FileText, CheckCircle2, XCircle, ArrowRight, ArrowLeft, AlertCircle } from "lucide-react";
-import { getPresignedUrl, confirmUpload, markDocumentsUploaded } from "../../api/client";
+import { getPresignedUrl, confirmUpload, markDocumentsUploaded, uploadDocumentDirect } from "../../api/client";
 import { useOnboardingStore } from "../../store/onboardingStore";
 import { Spinner } from "../../components/ui";
 import toast from "react-hot-toast";
@@ -31,7 +31,7 @@ const DOC_TYPES_CORPORATE = [
 ];
 
 export default function DocumentUploadPage({ onBack, onNext, onboardingType }: Props) {
-  const { setServerStatus, nextStep } = useOnboardingStore();
+  const { setServerStatus } = useOnboardingStore();
   const [files, setFiles] = useState<UploadedFile[]>([]);
   const [selectedDocType, setSelectedDocType] = useState("passport");
   const [dragging, setDragging] = useState(false);
@@ -39,6 +39,7 @@ export default function DocumentUploadPage({ onBack, onNext, onboardingType }: P
   const inputRef = useRef<HTMLInputElement>(null);
 
   const docTypes = onboardingType === "corporate" ? DOC_TYPES_CORPORATE : DOC_TYPES_INDIVIDUAL;
+  const preferServerUpload = typeof window !== "undefined" && window.location.hostname === "localhost";
 
   const uploadFile = async (file: File) => {
     const uid = crypto.randomUUID();
@@ -46,6 +47,13 @@ export default function DocumentUploadPage({ onBack, onNext, onboardingType }: P
     setFiles((f) => [...f, entry]);
 
     try {
+      if (preferServerUpload) {
+        const { data } = await uploadDocumentDirect(selectedDocType, file);
+        setFiles((f) => f.map((x) => x.id === uid ? { ...x, status: "done", progress: 100, documentId: data.document_id } : x));
+        toast.success(`${file.name} uploaded through secure server path`);
+        return;
+      }
+
       // 1. Get presigned URL
       const { data } = await getPresignedUrl({
         document_type: selectedDocType,
@@ -56,7 +64,7 @@ export default function DocumentUploadPage({ onBack, onNext, onboardingType }: P
 
       // 2. Upload directly to S3
       await axios.put(data.upload_url, file, {
-        headers: { "Content-Type": file.type || "application/octet-stream" },
+        headers: data.upload_headers,
         onUploadProgress: (e) => {
           const pct = Math.round((e.loaded / (e.total || 1)) * 100);
           setFiles((f) => f.map((x) => x.id === uid ? { ...x, progress: pct } : x));
@@ -67,9 +75,34 @@ export default function DocumentUploadPage({ onBack, onNext, onboardingType }: P
       await confirmUpload({ document_id: data.document_id, file_hash: uid });
 
       setFiles((f) => f.map((x) => x.id === uid ? { ...x, status: "done", progress: 100, documentId: data.document_id } : x));
-    } catch {
+    } catch (err) {
+      const shouldFallback =
+        axios.isAxiosError(err) &&
+        (!err.response || err.message === "Network Error");
+
+      if (shouldFallback) {
+        try {
+          const { data } = await uploadDocumentDirect(selectedDocType, file);
+          setFiles((f) => f.map((x) => x.id === uid ? { ...x, status: "done", progress: 100, documentId: data.document_id } : x));
+          toast.success(`${file.name} uploaded through secure server fallback`);
+          return;
+        } catch (fallbackErr) {
+          const msg =
+            axios.isAxiosError(fallbackErr)
+              ? fallbackErr.response?.data?.message || fallbackErr.response?.data?.detail || fallbackErr.message
+              : "Upload failed";
+          setFiles((f) => f.map((x) => x.id === uid ? { ...x, status: "error" } : x));
+          toast.error(`Failed to upload ${file.name}: ${msg}`);
+          return;
+        }
+      }
+
       setFiles((f) => f.map((x) => x.id === uid ? { ...x, status: "error" } : x));
-      toast.error(`Failed to upload ${file.name}`);
+      const msg =
+        axios.isAxiosError(err)
+          ? err.response?.data?.message || err.response?.data?.detail || err.message
+          : "Upload failed";
+      toast.error(`Failed to upload ${file.name}: ${msg}`);
     }
   };
 
@@ -91,7 +124,6 @@ export default function DocumentUploadPage({ onBack, onNext, onboardingType }: P
     try {
       const res = await markDocumentsUploaded();
       setServerStatus(res.data.current_status);
-      nextStep();
       onNext();
     } catch {
       toast.error("Failed to advance. Please try again.");

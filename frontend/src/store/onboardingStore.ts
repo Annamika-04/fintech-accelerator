@@ -17,6 +17,7 @@ export type OnboardingStatus =
 
 export interface OnboardingState {
   // Server state
+  ownerUserId: string | null;
   serverStatus: OnboardingStatus | null;
   onboardingType: OnboardingType | null;
   profileId: string | null;
@@ -29,8 +30,9 @@ export interface OnboardingState {
   currentStep: number;
 
   // Actions
+  setOwnerUserId: (id: string | null) => void;
   setServerStatus: (s: OnboardingStatus) => void;
-  setOnboardingType: (t: OnboardingType) => void;
+  setOnboardingType: (t: OnboardingType | null) => void;
   setProfileId: (id: string) => void;
   setScores: (kyc: number | null, aml: number | null, final: number | null, decision: string | null) => void;
   setStep: (step: number) => void;
@@ -41,6 +43,7 @@ export interface OnboardingState {
 export const useOnboardingStore = create<OnboardingState>()(
   persist(
     (set) => ({
+      ownerUserId: null,
       serverStatus: null,
       onboardingType: null,
       profileId: null,
@@ -50,6 +53,7 @@ export const useOnboardingStore = create<OnboardingState>()(
       decision: null,
       currentStep: 0,
 
+      setOwnerUserId: (id) => set({ ownerUserId: id }),
       setServerStatus: (s) => set({ serverStatus: s }),
       setOnboardingType: (t) => set({ onboardingType: t }),
       setProfileId: (id) => set({ profileId: id }),
@@ -59,6 +63,7 @@ export const useOnboardingStore = create<OnboardingState>()(
       nextStep: () => set((s) => ({ currentStep: s.currentStep + 1 })),
       reset: () =>
         set({
+          ownerUserId: null,
           serverStatus: null,
           onboardingType: null,
           profileId: null,
