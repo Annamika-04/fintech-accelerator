@@ -1,7 +1,5 @@
-from celery import shared_task
-from sqlalchemy import select
 from app.tasks.celery_app import celery_app
-from app.services.textract import extract_document_fields
+from app.services.provider_factory import get_ocr_provider
 from app.core.logging import get_logger
 
 logger = get_logger(__name__)
@@ -15,7 +13,7 @@ logger = get_logger(__name__)
     name="tasks.run_ocr",
 )
 def run_ocr(self, document_id: str, s3_key: str, user_id: str):
-    """Extract text fields from a document using AWS Textract."""
+    """Extract text fields from a document using the configured OCR provider."""
     from app.db.session import AsyncSessionLocal
     from app.models.document import DocumentVerification
     import asyncio
@@ -23,15 +21,19 @@ def run_ocr(self, document_id: str, s3_key: str, user_id: str):
     logger.info("ocr_task_started", document_id=document_id, s3_key=s3_key)
 
     try:
-        result = extract_document_fields(s3_key)
+        result = get_ocr_provider().extract(s3_key)
 
         async def _save():
             async with AsyncSessionLocal() as db:
                 verification = DocumentVerification(
                     document_id=document_id,
                     user_id=user_id,
-                    extracted_fields=result["fields"],
-                    confidence_scores=result["confidence_scores"],
+                    extracted_fields={
+                        "raw_text": result.raw_text,
+                        "parsed_fields": result.parsed_fields,
+                        "preprocessing_meta": result.preprocessing_meta,
+                    },
+                    confidence_scores=result.confidence_scores,
                     verification_status="completed",
                 )
                 db.add(verification)

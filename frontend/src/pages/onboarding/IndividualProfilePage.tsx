@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { User, ArrowRight, ArrowLeft } from "lucide-react";
-import { saveIndividualProfile } from "../../api/client";
+import { saveIndividualProfile, saveStep } from "../../api/client";
 import { useOnboardingStore } from "../../store/onboardingStore";
 import { Spinner } from "../../components/ui";
 import toast from "react-hot-toast";
@@ -103,9 +103,9 @@ function AutocompleteField({ label, value, onChange, suggestions, placeholder, r
   // Sync external value changes (e.g. reset)
   useEffect(() => { setQuery(value); }, [value]);
 
-  const filtered = query.length > 0
-    ? suggestions.filter((s) => s.toLowerCase().includes(query.toLowerCase())).slice(0, 8)
-    : suggestions.slice(0, 8);
+  const filtered = suggestions.filter((s) =>
+    query.length === 0 || s.toLowerCase().includes(query.toLowerCase())
+  ).slice(0, 8);
 
   const select = (v: string) => {
     setQuery(v);
@@ -231,23 +231,36 @@ function Field({ label, value, onChange, placeholder, type = "text", required = 
 // ── Page ──────────────────────────────────────────────────────────────────────
 
 export default function IndividualProfilePage({ onBack, onNext }: Props) {
-  const { setServerStatus, setProfileId, nextStep } = useOnboardingStore();
+  const { setServerStatus, setProfileId, nextStep, mergeStepData } = useOnboardingStore();
   const [loading, setLoading] = useState(false);
+
+  // prefill from saved step data — read directly from store state to get latest persisted value
+  const saved = (useOnboardingStore.getState().stepData?.personal_details || {}) as Record<string, string>;
+  const savedAddr = (saved.address || {}) as Record<string, string>;
+
   const [form, setForm] = useState({
-    full_name: "", date_of_birth: "", nationality: "",
-    country_of_residence: "", phone: "", email: "",
-    occupation: "", tax_id: "",
-    address_line1: "", address_city: "", address_state: "",
-    address_postal_code: "", address_country: "",
+    full_name: saved.full_name || "",
+    date_of_birth: saved.date_of_birth || "",
+    nationality: saved.nationality || "",
+    country_of_residence: saved.country_of_residence || "",
+    phone: saved.phone || "",
+    email: saved.email || "",
+    occupation: saved.occupation || "",
+    tax_id: saved.tax_id || "",
+    address_line1: savedAddr.line1 || "",
+    address_city: savedAddr.city || "",
+    address_state: savedAddr.state || "",
+    address_postal_code: savedAddr.postal_code || "",
+    address_country: savedAddr.country || "",
   });
 
   const set = (k: string) => (v: string) => setForm((f) => ({ ...f, [k]: v }));
 
   const isIndia = form.country_of_residence === "India" || form.address_country === "India";
-  const stateSuggestions = isIndia ? ALL_STATES : [];
-  const citySuggestions = form.address_state && INDIA_STATES[form.address_state]
+  const stateSuggestions = isIndia ? ALL_STATES : ALL_STATES;
+  const citySuggestions: string[] = form.address_state && INDIA_STATES[form.address_state]
     ? INDIA_STATES[form.address_state]
-    : [];
+    : Object.values(INDIA_STATES).flat();
 
   const toISODate = (raw: string): string | null => {
     if (!raw) return null;
@@ -280,6 +293,9 @@ export default function IndividualProfilePage({ onBack, onNext }: Props) {
         } : null,
       };
       const res = await saveIndividualProfile(payload);
+      // persist step data locally and to backend
+      mergeStepData({ personal_details: payload as unknown as Record<string, unknown> });
+      await saveStep("personal_details", payload, "PROFILE_COMPLETED");
       setProfileId(res.data.id);
       setServerStatus(res.data.onboarding_status);
       nextStep();
@@ -368,7 +384,7 @@ export default function IndividualProfilePage({ onBack, onNext }: Props) {
               label="City"
               value={form.address_city}
               onChange={set("address_city")}
-              suggestions={citySuggestions.length > 0 ? citySuggestions : []}
+              suggestions={citySuggestions}
               placeholder="Type to search city…"
             />
             <Field label="Postal Code" value={form.address_postal_code} onChange={set("address_postal_code")} placeholder="400001" />

@@ -36,12 +36,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       getMe()
         .then((r) => setUser(r.data))
         .catch(() => {
+          // token expired or invalid — clear everything, force login
           localStorage.removeItem(TOKEN_KEY);
           localStorage.removeItem(REFRESH_KEY);
+          localStorage.removeItem("kyc-onboarding");
           setToken(null);
         })
         .finally(() => setLoading(false));
     } else {
+      // no token — clear any stale onboarding state too
+      localStorage.removeItem("kyc-onboarding");
       setLoading(false);
     }
   }, []);
@@ -59,6 +63,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     localStorage.removeItem(REFRESH_KEY);
     setToken(null);
     setUser(null);
+    // clear persisted onboarding store so next login starts fresh
+    localStorage.removeItem("kyc-onboarding");
   };
 
   return (

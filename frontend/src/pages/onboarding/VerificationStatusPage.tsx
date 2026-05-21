@@ -1,10 +1,11 @@
 import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
-import { CheckCircle2, Clock, XCircle, AlertTriangle, ShieldCheck, RefreshCw } from "lucide-react";
+import { CheckCircle2, Clock, XCircle, AlertTriangle, ShieldCheck, RefreshCw, ArrowLeft } from "lucide-react";
 import { RadialBarChart, RadialBar, ResponsiveContainer, Tooltip } from "recharts";
-import { getOnboardingStatus } from "../../api/client";
+import { getOnboardingStatus, resetKYC } from "../../api/client";
 import { useOnboardingStore, OnboardingStatus } from "../../store/onboardingStore";
 import { Spinner } from "../../components/ui";
+import toast from "react-hot-toast";
 
 const STATUS_META: Record<OnboardingStatus, { label: string; color: string; icon: typeof CheckCircle2 }> = {
   REGISTERED:         { label: "Registered",         color: "#64748b", icon: Clock },
@@ -56,10 +57,24 @@ const ScoreTooltip = ({ active, payload }: { active?: boolean; payload?: { paylo
   );
 };
 
-export default function VerificationStatusPage() {
+export default function VerificationStatusPage({ onBack }: { onBack?: () => void }) {
   const { setServerStatus, setScores } = useOnboardingStore();
   const [state, setState] = useState<ServerState | null>(null);
   const [loading, setLoading] = useState(true);
+  const [resetting, setResetting] = useState(false);
+
+  const handleBack = async () => {
+    if (!onBack) return;
+    setResetting(true);
+    try {
+      await resetKYC();
+      onBack();
+    } catch {
+      toast.error("Failed to reset. Please try again.");
+    } finally {
+      setResetting(false);
+    }
+  };
 
   const fetchStatus = async () => {
     try {
@@ -100,6 +115,7 @@ export default function VerificationStatusPage() {
   const currentIdx = statusIndex(state.current_status);
   const isTerminal = ["APPROVED", "REJECTED", "FROZEN"].includes(state.current_status);
   const isPending = ["KYC_PENDING", "AML_PENDING", "UNDER_REVIEW"].includes(state.current_status);
+  const canRetakeSelfie = state.current_status === "KYC_PENDING" || state.current_status === "DOCUMENTS_UPLOADED";
   const finalScore = state.final_score;
   const color = finalScore !== null ? scoreColor(finalScore) : "#64748b";
 
@@ -124,12 +140,23 @@ export default function VerificationStatusPage() {
         <h2 style={{ fontSize: 22, fontWeight: 600, color: "#f1f5f9", marginBottom: 6 }}>{meta.label}</h2>
         <p style={{ fontSize: 13, color: "#475569" }}>
           {isPending ? "Your application is being processed. This usually takes a few minutes." :
+           state.current_status === "DOCUMENTS_UPLOADED" ? "Your documents have been uploaded. Please proceed to take your selfie." :
            state.current_status === "APPROVED" ? "Your identity has been verified. You're all set." :
            state.current_status === "REJECTED" ? "Your application was not approved. Please contact support." :
-           "Your account has been frozen pending compliance review."}
+           state.current_status === "FROZEN" ? "Your account has been frozen pending compliance review." :
+           "Your application is under review."}
         </p>
+        {canRetakeSelfie && onBack && (
+          <button
+            onClick={handleBack}
+            disabled={resetting}
+            style={{ marginTop: 10, display: "inline-flex", alignItems: "center", gap: 6, background: "none", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 8, padding: "6px 14px", color: "#64748b", fontSize: 12, cursor: "pointer" }}>
+            {resetting ? <Spinner size={12} color="#64748b" /> : <ArrowLeft size={12} />}
+            {resetting ? "Resetting…" : "Retake Selfie"}
+          </button>
+        )}
         {isPending && (
-          <button onClick={fetchStatus} style={{ marginTop: 12, display: "inline-flex", alignItems: "center", gap: 6, background: "none", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 8, padding: "6px 14px", color: "#64748b", fontSize: 12, cursor: "pointer" }}>
+          <button onClick={fetchStatus} style={{ marginTop: 10, display: "inline-flex", alignItems: "center", gap: 6, background: "none", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 8, padding: "6px 14px", color: "#64748b", fontSize: 12, cursor: "pointer" }}>
             <RefreshCw size={12} /> Refresh
           </button>
         )}

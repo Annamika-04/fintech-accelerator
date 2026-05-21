@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { ShieldCheck } from "lucide-react";
 import { Toaster } from "react-hot-toast";
-import { getOnboardingStatus } from "../../api/client";
+import { resumeOnboarding } from "../../api/client";
 import { useOnboardingStore, OnboardingType } from "../../store/onboardingStore";
 import { Spinner } from "../../components/ui";
 import TypeSelectionPage from "./TypeSelectionPage";
@@ -17,27 +17,30 @@ const INDIVIDUAL_STEPS = ["Account Type", "Personal Info", "Documents", "Selfie"
 const CORPORATE_STEPS  = ["Account Type", "Company Info", "Documents", "Selfie", "Status"];
 
 export default function OnboardingWizard() {
-  const { currentStep, onboardingType, serverStatus, setStep, setServerStatus, setOnboardingType } = useOnboardingStore();
+  const { currentStep, onboardingType, serverStatus, setStep, setServerStatus, setOnboardingType, mergeStepData, setIdDocumentS3Key } = useOnboardingStore();
   const [bootstrapped, setBootstrapped] = useState(false);
 
-  // On mount: sync with server state to resume interrupted sessions
   useEffect(() => {
-    getOnboardingStatus()
+    resumeOnboarding()
       .then((res) => {
-        const { current_status, onboarding_type } = res.data;
+        const { current_status, onboarding_type, step_data } = res.data;
         setServerStatus(current_status);
         if (onboarding_type) setOnboardingType(onboarding_type as OnboardingType);
-
-        // Map server status → wizard step
+        if (step_data) {
+          mergeStepData(step_data);
+          // restore id document s3 key from backend step_data if not already in store
+          const docs = step_data.documents as Array<{ s3Key?: string }> | undefined;
+          if (docs?.[0]?.s3Key) setIdDocumentS3Key(docs[0].s3Key);
+          else if (step_data.document_upload?.s3_key) setIdDocumentS3Key(step_data.document_upload.s3_key as string);
+        }
+        // Always trust server status for step
         const stepMap: Record<string, number> = {
           REGISTERED: 0, TYPE_SELECTED: 1,
           PROFILE_COMPLETED: 2, DOCUMENTS_UPLOADED: 3,
           KYC_PENDING: 4, AML_PENDING: 4,
           UNDER_REVIEW: 4, APPROVED: 4, REJECTED: 4, FROZEN: 4,
         };
-        const resumeStep = stepMap[current_status] ?? 0;
-        // Only advance if store step is behind server
-        if (resumeStep > currentStep) setStep(resumeStep);
+        setStep(stepMap[current_status] ?? 0);
       })
       .catch(() => {})
       .finally(() => setBootstrapped(true));
@@ -134,7 +137,7 @@ export default function OnboardingWizard() {
             <SelfieCapturePage onBack={goBack} onNext={goNext} />
           )}
           {currentStep === 4 && (
-            <VerificationStatusPage />
+            <VerificationStatusPage onBack={goBack} />
           )}
         </motion.div>
       </AnimatePresence>

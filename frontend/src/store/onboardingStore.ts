@@ -28,6 +28,12 @@ export interface OnboardingState {
   // Wizard UI state
   currentStep: number;
 
+  // ID document s3 key from document upload step
+  idDocumentS3Key: string | null;
+
+  // Prefill data per step — populated from /onboarding/resume
+  stepData: Record<string, Record<string, unknown>>;
+
   // Actions
   setServerStatus: (s: OnboardingStatus) => void;
   setOnboardingType: (t: OnboardingType) => void;
@@ -35,6 +41,9 @@ export interface OnboardingState {
   setScores: (kyc: number | null, aml: number | null, final: number | null, decision: string | null) => void;
   setStep: (step: number) => void;
   nextStep: () => void;
+  setIdDocumentS3Key: (key: string) => void;
+  setStepData: (data: Record<string, Record<string, unknown>>) => void;
+  mergeStepData: (data: Record<string, Record<string, unknown>>) => void;
   reset: () => void;
 }
 
@@ -49,6 +58,8 @@ export const useOnboardingStore = create<OnboardingState>()(
       finalScore: null,
       decision: null,
       currentStep: 0,
+      idDocumentS3Key: null,
+      stepData: {},
 
       setServerStatus: (s) => set({ serverStatus: s }),
       setOnboardingType: (t) => set({ onboardingType: t }),
@@ -57,6 +68,9 @@ export const useOnboardingStore = create<OnboardingState>()(
         set({ kycScore: kyc, amlScore: aml, finalScore: final, decision }),
       setStep: (step) => set({ currentStep: step }),
       nextStep: () => set((s) => ({ currentStep: s.currentStep + 1 })),
+      setIdDocumentS3Key: (key) => set({ idDocumentS3Key: key }),
+      setStepData: (data) => set({ stepData: data }),
+      mergeStepData: (data) => set((s) => ({ stepData: { ...s.stepData, ...data } })),
       reset: () =>
         set({
           serverStatus: null,
@@ -67,6 +81,8 @@ export const useOnboardingStore = create<OnboardingState>()(
           finalScore: null,
           decision: null,
           currentStep: 0,
+          idDocumentS3Key: null,
+          stepData: {},
         }),
     }),
     { name: "kyc-onboarding" }

@@ -1,5 +1,5 @@
 from app.tasks.celery_app import celery_app
-from app.services.rekognition import compare_faces
+from app.services.provider_factory import get_face_provider
 from app.core.logging import get_logger
 
 logger = get_logger(__name__)
@@ -19,13 +19,13 @@ def run_face_verification(
     id_document_s3_key: str,
     user_id: str,
 ):
-    """Compare selfie against ID document using AWS Rekognition."""
+    """Compare selfie against ID document using the configured face verification provider."""
     import asyncio
 
     logger.info("face_task_started", face_verification_id=face_verification_id)
 
     try:
-        result = compare_faces(selfie_s3_key, id_document_s3_key)
+        result = get_face_provider().verify(selfie_s3_key, id_document_s3_key)
 
         async def _save():
             from app.db.session import AsyncSessionLocal
@@ -40,16 +40,16 @@ def run_face_verification(
                 )
                 record = res.scalar_one_or_none()
                 if record:
-                    record.similarity_score = result["similarity_score"]
-                    record.confidence_score = result["confidence_score"]
-                    record.is_match = result["is_match"]
-                    record.rekognition_response = result["raw_response"]
+                    record.similarity_score = result.similarity_score
+                    record.confidence_score = result.confidence_score
+                    record.is_match = result.is_match
+                    record.rekognition_response = result.raw_response
                     record.status = "completed"
                     await db.commit()
 
         asyncio.run(_save())
         logger.info("face_task_complete", face_verification_id=face_verification_id)
-        return {"status": "success", "is_match": result["is_match"]}
+        return {"status": "success", "is_match": result.is_match}
 
     except Exception as exc:
         logger.error("face_task_failed", face_verification_id=face_verification_id, error=str(exc))

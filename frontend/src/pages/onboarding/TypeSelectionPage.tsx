@@ -1,8 +1,10 @@
 import { useState } from "react";
 import { motion } from "framer-motion";
-import { Building2, User, ArrowRight, ShieldCheck } from "lucide-react";
+import { Building2, User, ArrowRight, ArrowLeft, ShieldCheck } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 import { selectOnboardingType } from "../../api/client";
 import { useOnboardingStore, OnboardingType } from "../../store/onboardingStore";
+import { useAuth } from "../../context/AuthContext";
 import { Spinner } from "../../components/ui";
 import toast from "react-hot-toast";
 
@@ -37,6 +39,13 @@ export default function TypeSelectionPage({ onSelect }: Props) {
   const [selected, setSelected] = useState<OnboardingType | null>(null);
   const [loading, setLoading] = useState(false);
   const { setOnboardingType, setServerStatus, nextStep } = useOnboardingStore();
+  const { logout } = useAuth();
+  const navigate = useNavigate();
+
+  const handleBack = () => {
+    logout();
+    navigate("/login", { replace: true });
+  };
 
   const handleContinue = async () => {
     if (!selected) return;
@@ -56,6 +65,15 @@ export default function TypeSelectionPage({ onSelect }: Props) {
 
   return (
     <div style={{ maxWidth: 720, margin: "0 auto", padding: "48px 24px" }}>
+      {/* Back to login */}
+      <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} style={{ marginBottom: 8 }}>
+        <button
+          onClick={handleBack}
+          style={{ display: "flex", alignItems: "center", gap: 6, background: "none", border: "none", color: "#475569", fontSize: 13, cursor: "pointer", padding: 0 }}
+        >
+          <ArrowLeft size={14} /> Back to Login
+        </button>
+      </motion.div>
       {/* Header */}
       <motion.div
         initial={{ opacity: 0, y: 16 }}

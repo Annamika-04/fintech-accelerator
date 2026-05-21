@@ -12,6 +12,7 @@ s3_client = boto3.client(
     region_name=settings.AWS_REGION,
     aws_access_key_id=settings.AWS_ACCESS_KEY_ID or None,
     aws_secret_access_key=settings.AWS_SECRET_ACCESS_KEY or None,
+    aws_session_token=settings.AWS_SESSION_TOKEN or None,
 )
 
 
@@ -37,7 +38,6 @@ def generate_presigned_upload_url(
                 "Bucket": settings.S3_BUCKET_NAME,
                 "Key": s3_key,
                 "ContentType": content_type,
-                "ServerSideEncryption": "aws:kms",
             },
             ExpiresIn=settings.S3_PRESIGNED_URL_EXPIRY,
         )

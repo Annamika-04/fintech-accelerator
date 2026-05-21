@@ -4,6 +4,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { ArrowLeft, RefreshCw, ShieldCheck } from "lucide-react";
 import { verifyOtp, sendOtp } from "../api/client";
 import { useAuth } from "../context/AuthContext";
+import { useOnboardingStore } from "../store/onboardingStore";
 import { Spinner } from "../components/ui";
 
 const OTP_LENGTH = 6;
@@ -13,6 +14,7 @@ export default function OtpVerificationPage() {
   const navigate = useNavigate();
   const location = useLocation();
   const { loginWithOtp } = useAuth();
+  const resetOnboarding = useOnboardingStore((s) => s.reset);
 
   const phone: string = (location.state as { phone?: string })?.phone || "";
 
@@ -82,6 +84,8 @@ export default function OtpVerificationPage() {
       const { data } = await verifyOtp(phone, otp);
       setSuccess(true);
       await loginWithOtp(data.access_token, data.refresh_token);
+      // always reset store — server state will drive the correct step
+      resetOnboarding();
 
       // Route based on onboarding status
       const status: string = data.onboarding_status;

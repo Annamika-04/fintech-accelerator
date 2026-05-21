@@ -98,6 +98,10 @@ export const markDocumentsUploaded = () =>
   api.post("/onboarding/advance/documents-uploaded");
 
 export const triggerKYC = () => api.post("/onboarding/advance/kyc-pending");
+export const resetKYC = () => api.post("/onboarding/reset-kyc");
+export const saveStep = (step: string, data: Record<string, unknown>, current_status?: string) =>
+  api.post("/onboarding/save-step", { step, data, current_status });
+export const resumeOnboarding = () => api.get("/onboarding/resume");
 
 export const makeDecision = (userId: string, decision: string) =>
   api.post(`/onboarding/decision/${userId}?decision=${decision}`);

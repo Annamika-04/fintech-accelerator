@@ -1,7 +1,7 @@
-import { useState, useRef, useCallback } from "react";
-import { motion } from "framer-motion";
-import { Camera, Upload, CheckCircle2, ArrowRight, ArrowLeft, ScanFace } from "lucide-react";
-import { getPresignedUrl, confirmUpload, submitFaceVerification, triggerKYC } from "../../api/client";
+import { useState, useRef, useCallback, useEffect } from "react";
+import { motion, AnimatePresence } from "framer-motion";
+import { Camera, Upload, CheckCircle2, XCircle, ArrowRight, ArrowLeft, ScanFace, AlertTriangle, RefreshCw } from "lucide-react";
+import { getPresignedUrl, confirmUpload, submitFaceVerification, triggerKYC, saveStep } from "../../api/client";
 import { useOnboardingStore } from "../../store/onboardingStore";
 import { Spinner } from "../../components/ui";
 import toast from "react-hot-toast";
@@ -9,25 +9,127 @@ import axios from "axios";
 
 interface Props { onBack: () => void; onNext: () => void; }
 
+type CheckStatus = "pending" | "pass" | "fail";
+interface QualityChecks {
+  faceVisible: CheckStatus;
+  goodLighting: CheckStatus;
+  noGlassesHat: CheckStatus;
+}
+
 export default function SelfieCapturePage({ onBack, onNext }: Props) {
-  const { setServerStatus, nextStep } = useOnboardingStore();
+  const { setServerStatus, nextStep, idDocumentS3Key, mergeStepData } = useOnboardingStore();
+  const savedSelfie = useOnboardingStore.getState().stepData?.selfie as { selfie_s3_key?: string; preview?: string } | undefined;
+
   const [selfieFile, setSelfieFile] = useState<File | null>(null);
-  const [selfiePreview, setSelfiePreview] = useState<string | null>(null);
-  const [selfieS3Key, setSelfieS3Key] = useState<string | null>(null);
+  const [selfiePreview, setSelfiePreview] = useState<string | null>(savedSelfie?.preview || null);
+  const [selfieS3Key, setSelfieS3Key] = useState<string | null>(savedSelfie?.selfie_s3_key || null);
   const [uploading, setUploading] = useState(false);
-  const [submitted, setSubmitted] = useState(false);
+  const [submitted, setSubmitted] = useState(!!savedSelfie?.selfie_s3_key);
   const [advancing, setAdvancing] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const [cameraActive, setCameraActive] = useState(false);
   const streamRef = useRef<MediaStream | null>(null);
 
+  // ── Image quality checks ──────────────────────────────────────────────────
+  const [checks, setChecks] = useState<QualityChecks>({
+    faceVisible: "pending",
+    goodLighting: "pending",
+    noGlassesHat: "pending",
+  });
+  const [checkAlerts, setCheckAlerts] = useState<string[]>([]);
+
+  const analyseImage = (dataUrl: string) => {
+    const img = new Image();
+    img.onload = () => {
+      const canvas = document.createElement("canvas");
+      canvas.width = img.width;
+      canvas.height = img.height;
+      const ctx = canvas.getContext("2d")!;
+      ctx.drawImage(img, 0, 0);
+
+      const w = img.width;
+      const h = img.height;
+
+      // ── 1. Brightness check (good lighting) ──────────────────────────────
+      const fullData = ctx.getImageData(0, 0, w, h).data;
+      let totalBrightness = 0;
+      for (let i = 0; i < fullData.length; i += 4) {
+        totalBrightness += (fullData[i] * 0.299 + fullData[i + 1] * 0.587 + fullData[i + 2] * 0.114);
+      }
+      const avgBrightness = totalBrightness / (fullData.length / 4);
+      const lightingOk = avgBrightness > 60 && avgBrightness < 220;
+
+      // ── 2. Face visible — check centre region has enough contrast ─────────
+      const cx = Math.floor(w * 0.25);
+      const cy = Math.floor(h * 0.15);
+      const cw = Math.floor(w * 0.5);
+      const ch = Math.floor(h * 0.7);
+      const centerData = ctx.getImageData(cx, cy, cw, ch).data;
+      let minL = 255; let maxL = 0;
+      for (let i = 0; i < centerData.length; i += 4) {
+        const l = (centerData[i] * 0.299 + centerData[i + 1] * 0.587 + centerData[i + 2] * 0.114);
+        if (l < minL) minL = l;
+        if (l > maxL) maxL = l;
+      }
+      const contrast = maxL - minL;
+      const faceOk = contrast > 40;
+
+      // ── 3. No glasses/hat — check top strip brightness vs face centre ─────
+      // If top 15% of image is significantly darker than centre → likely hat
+      const topData = ctx.getImageData(0, 0, w, Math.floor(h * 0.15)).data;
+      let topBrightness = 0;
+      for (let i = 0; i < topData.length; i += 4) {
+        topBrightness += (topData[i] * 0.299 + topData[i + 1] * 0.587 + topData[i + 2] * 0.114);
+      }
+      const avgTop = topBrightness / (topData.length / 4);
+      // Check eye region (middle vertical strip) for horizontal dark bands → glasses
+      const eyeData = ctx.getImageData(Math.floor(w * 0.2), Math.floor(h * 0.3), Math.floor(w * 0.6), Math.floor(h * 0.15)).data;
+      let darkPixels = 0;
+      for (let i = 0; i < eyeData.length; i += 4) {
+        const l = (eyeData[i] * 0.299 + eyeData[i + 1] * 0.587 + eyeData[i + 2] * 0.114);
+        if (l < 60) darkPixels++;
+      }
+      const darkRatio = darkPixels / (eyeData.length / 4);
+      const noGlassesHatOk = darkRatio < 0.25 && avgTop > 30;
+
+      const alerts: string[] = [];
+      if (!lightingOk) alerts.push(avgBrightness <= 60 ? "Image is too dark. Move to a brighter area." : "Image is overexposed. Reduce direct light.");
+      if (!faceOk) alerts.push("Face not clearly detected. Ensure your face is centred and visible.");
+      if (!noGlassesHatOk) alerts.push("Possible glasses or hat detected. Please remove them for accurate verification.");
+
+      setChecks({
+        faceVisible: faceOk ? "pass" : "fail",
+        goodLighting: lightingOk ? "pass" : "fail",
+        noGlassesHat: noGlassesHatOk ? "pass" : "fail",
+      });
+      setCheckAlerts(alerts);
+    };
+    img.src = dataUrl;
+  };
+
+  const retake = useCallback(() => {
+    setSelfieFile(null);
+    setSelfiePreview(null);
+    setSelfieS3Key(null);
+    setSubmitted(false);
+    setChecks({ faceVisible: "pending", goodLighting: "pending", noGlassesHat: "pending" });
+    setCheckAlerts([]);
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  }, []);
+
   const startCamera = async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" } });
       streamRef.current = stream;
-      if (videoRef.current) videoRef.current.srcObject = stream;
       setCameraActive(true);
+      // Wait for the video element to mount after state update, then attach stream
+      setTimeout(() => {
+        if (videoRef.current) {
+          videoRef.current.srcObject = stream;
+          videoRef.current.play().catch(() => {});
+        }
+      }, 50);
     } catch {
       toast.error("Camera access denied. Please upload a selfie instead.");
     }
@@ -47,8 +149,10 @@ export default function SelfieCapturePage({ onBack, onNext }: Props) {
     canvas.toBlob((blob) => {
       if (!blob) return;
       const file = new File([blob], "selfie.jpg", { type: "image/jpeg" });
+      const dataUrl = canvas.toDataURL("image/jpeg");
       setSelfieFile(file);
-      setSelfiePreview(canvas.toDataURL("image/jpeg"));
+      setSelfiePreview(dataUrl);
+      analyseImage(dataUrl);
       stopCamera();
     }, "image/jpeg", 0.9);
   };
@@ -56,8 +160,13 @@ export default function SelfieCapturePage({ onBack, onNext }: Props) {
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    const objectUrl = URL.createObjectURL(file);
     setSelfieFile(file);
-    setSelfiePreview(URL.createObjectURL(file));
+    setSelfiePreview(objectUrl);
+    // Read as dataURL for canvas analysis
+    const reader = new FileReader();
+    reader.onload = (ev) => { if (ev.target?.result) analyseImage(ev.target.result as string); };
+    reader.readAsDataURL(file);
   };
 
   const uploadSelfie = async () => {
@@ -74,6 +183,9 @@ export default function SelfieCapturePage({ onBack, onNext }: Props) {
       await confirmUpload({ document_id: data.document_id, file_hash: crypto.randomUUID() });
       setSelfieS3Key(data.s3_key);
       setSubmitted(true);
+      // Persist selfie locally and to backend
+      mergeStepData({ selfie: { selfie_s3_key: data.s3_key, preview: selfiePreview ?? undefined } as unknown as Record<string, unknown> });
+      await saveStep("selfie", { selfie_s3_key: data.s3_key }, undefined);
       toast.success("Selfie uploaded successfully");
     } catch {
       toast.error("Upload failed. Please try again.");
@@ -84,11 +196,10 @@ export default function SelfieCapturePage({ onBack, onNext }: Props) {
 
   const handleContinue = async () => {
     if (!selfieS3Key) return toast.error("Please upload your selfie first");
+    if (!idDocumentS3Key) return toast.error("ID document not found. Please go back and upload your document.");
     setAdvancing(true);
     try {
-      // Submit face verification job
-      await submitFaceVerification({ selfie_s3_key: selfieS3Key, id_document_s3_key: selfieS3Key });
-      // Advance state machine
+      await submitFaceVerification({ selfie_s3_key: selfieS3Key, id_document_s3_key: idDocumentS3Key });
       const res = await triggerKYC();
       setServerStatus(res.data.current_status);
       nextStep();
@@ -117,10 +228,17 @@ export default function SelfieCapturePage({ onBack, onNext }: Props) {
       {/* Camera / Preview area */}
       <div style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.06)", borderRadius: 16, overflow: "hidden", marginBottom: 20, aspectRatio: "4/3", display: "flex", alignItems: "center", justifyContent: "center", position: "relative" }}>
         {cameraActive && (
-          <video ref={videoRef} autoPlay playsInline muted style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+          <video ref={videoRef} autoPlay playsInline muted
+            onLoadedMetadata={() => videoRef.current?.play()}
+            style={{ width: "100%", height: "100%", objectFit: "cover" }} />
         )}
         {selfiePreview && !cameraActive && (
           <img src={selfiePreview} alt="Selfie preview" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+        )}
+        {selfiePreview && !cameraActive && !submitted && (
+          <button onClick={retake} style={{ position: "absolute", top: 12, left: 12, background: "rgba(0,0,0,0.6)", border: "1px solid rgba(255,255,255,0.2)", borderRadius: 8, padding: "6px 12px", color: "#fff", fontSize: 12, fontWeight: 500, cursor: "pointer", display: "flex", alignItems: "center", gap: 6, backdropFilter: "blur(4px)" }}>
+            <RefreshCw size={12} /> Retake
+          </button>
         )}
         {!cameraActive && !selfiePreview && (
           <div style={{ textAlign: "center", color: "#334155" }}>
@@ -136,14 +254,37 @@ export default function SelfieCapturePage({ onBack, onNext }: Props) {
         )}
       </div>
 
-      {/* Liveness hints */}
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, marginBottom: 24 }}>
-        {["Face clearly visible", "Good lighting", "No glasses/hat"].map((hint) => (
-          <div key={hint} style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.06)", borderRadius: 8, padding: "8px 10px", textAlign: "center", fontSize: 11, color: "#475569" }}>
-            {hint}
-          </div>
-        ))}
+      {/* Quality checks */}
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, marginBottom: 16 }}>
+        {([
+          { key: "faceVisible",  label: "Face clearly visible" },
+          { key: "goodLighting", label: "Good lighting" },
+          { key: "noGlassesHat", label: "No glasses/hat" },
+        ] as { key: keyof QualityChecks; label: string }[]).map(({ key, label }) => {
+          const s = checks[key];
+          const color = s === "pass" ? "#22c55e" : s === "fail" ? "#ef4444" : "#475569";
+          const bg = s === "pass" ? "rgba(34,197,94,0.08)" : s === "fail" ? "rgba(239,68,68,0.08)" : "rgba(255,255,255,0.02)";
+          const border = s === "pass" ? "rgba(34,197,94,0.25)" : s === "fail" ? "rgba(239,68,68,0.25)" : "rgba(255,255,255,0.06)";
+          return (
+            <div key={key} style={{ background: bg, border: `1px solid ${border}`, borderRadius: 8, padding: "8px 10px", textAlign: "center", fontSize: 11, color, display: "flex", alignItems: "center", justifyContent: "center", gap: 5, transition: "all 0.3s" }}>
+              {s === "pass" && <CheckCircle2 size={12} />}
+              {s === "fail" && <XCircle size={12} />}
+              {label}
+            </div>
+          );
+        })}
       </div>
+
+      {/* Alerts */}
+      <AnimatePresence>
+        {checkAlerts.map((alert, i) => (
+          <motion.div key={i} initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
+            style={{ display: "flex", alignItems: "flex-start", gap: 8, background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.2)", borderLeft: "3px solid #ef4444", borderRadius: 8, padding: "10px 12px", marginBottom: 8, fontSize: 12, color: "#fca5a5" }}>
+            <AlertTriangle size={13} style={{ marginTop: 1, flexShrink: 0 }} />
+            {alert}
+          </motion.div>
+        ))}
+      </AnimatePresence>
 
       {/* Action buttons */}
       <div style={{ display: "flex", gap: 10, marginBottom: 16 }}>

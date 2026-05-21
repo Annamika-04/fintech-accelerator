@@ -8,6 +8,9 @@ Set-ExecutionPolicy -Scope Process -ExecutionPolicy RemoteSigned
 .\venv\Scripts\Activate.ps1
 .\venv\Scripts\uvicorn.exe app.main:app --host 0.0.0.0 --port 8000 --reload
 
+venv\Scripts\python.exe -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+
+
 Run this from project root: .\start_backend.ps1 ( from start_celery.ps1)
 
 ## Terminal 2 — React Frontend (port 5173)

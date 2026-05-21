@@ -108,4 +108,7 @@ class OnboardingState(Base):
     aml_score        = Column(Integer, nullable=True)
     final_score      = Column(Integer, nullable=True)
     decision         = Column(String(50), nullable=True)
+    step_data        = Column(JSON, nullable=False, default=dict)
+    last_completed_step = Column(String(50), nullable=True)
+    submitted_at     = Column(DateTime(timezone=True), nullable=True)
     updated_at       = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())

@@ -1,7 +1,7 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Upload, FileText, CheckCircle2, XCircle, ArrowRight, ArrowLeft, AlertCircle } from "lucide-react";
-import { getPresignedUrl, confirmUpload, markDocumentsUploaded } from "../../api/client";
+import { getPresignedUrl, confirmUpload, markDocumentsUploaded, saveStep } from "../../api/client";
 import { useOnboardingStore } from "../../store/onboardingStore";
 import { Spinner } from "../../components/ui";
 import toast from "react-hot-toast";
@@ -12,7 +12,7 @@ interface Props { onBack: () => void; onNext: () => void; onboardingType: "indiv
 interface UploadedFile {
   id: string; name: string; type: string;
   status: "uploading" | "done" | "error";
-  progress: number; documentId?: string;
+  progress: number; documentId?: string; s3Key?: string;
 }
 
 const DOC_TYPES_INDIVIDUAL = [
@@ -31,12 +31,25 @@ const DOC_TYPES_CORPORATE = [
 ];
 
 export default function DocumentUploadPage({ onBack, onNext, onboardingType }: Props) {
-  const { setServerStatus, nextStep } = useOnboardingStore();
-  const [files, setFiles] = useState<UploadedFile[]>([]);
+  const { setServerStatus, nextStep, setIdDocumentS3Key, mergeStepData } = useOnboardingStore();
+  const [files, setFiles] = useState<UploadedFile[]>(() => {
+    // Restore previously uploaded documents from persisted stepData
+    const saved = useOnboardingStore.getState().stepData?.documents as UploadedFile[] | undefined;
+    return saved ?? [];
+  });
   const [selectedDocType, setSelectedDocType] = useState("passport");
   const [dragging, setDragging] = useState(false);
   const [advancing, setAdvancing] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+
+  // Keep stepData in sync whenever files change — use functional updater to avoid stale closure
+  useEffect(() => {
+    const done = files.filter((f) => f.status === "done");
+    if (done.length > 0) {
+      mergeStepData({ documents: done as unknown as Record<string, unknown> });
+      setIdDocumentS3Key(done[0].s3Key || "");
+    }
+  }, [files]);
 
   const docTypes = onboardingType === "corporate" ? DOC_TYPES_CORPORATE : DOC_TYPES_INDIVIDUAL;
 
@@ -66,7 +79,7 @@ export default function DocumentUploadPage({ onBack, onNext, onboardingType }: P
       // 3. Confirm upload
       await confirmUpload({ document_id: data.document_id, file_hash: uid });
 
-      setFiles((f) => f.map((x) => x.id === uid ? { ...x, status: "done", progress: 100, documentId: data.document_id } : x));
+      setFiles((f) => f.map((x) => x.id === uid ? { ...x, status: "done", progress: 100, documentId: data.document_id, s3Key: data.s3_key } : x));
     } catch {
       setFiles((f) => f.map((x) => x.id === uid ? { ...x, status: "error" } : x));
       toast.error(`Failed to upload ${file.name}`);
@@ -87,8 +100,12 @@ export default function DocumentUploadPage({ onBack, onNext, onboardingType }: P
   const handleContinue = async () => {
     const done = files.filter((f) => f.status === "done");
     if (done.length === 0) return toast.error("Please upload at least one document");
+    // persist the first uploaded doc's S3 key for face verification
+    const firstS3Key = (done[0] as any).s3Key;
+    if (firstS3Key) setIdDocumentS3Key(firstS3Key);
     setAdvancing(true);
     try {
+      await saveStep("documents", { files: done.map((f) => ({ name: f.name, type: f.type, documentId: f.documentId, s3Key: f.s3Key })) });
       const res = await markDocumentsUploaded();
       setServerStatus(res.data.current_status);
       nextStep();
