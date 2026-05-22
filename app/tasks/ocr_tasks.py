@@ -16,12 +16,14 @@ logger = get_logger(__name__)
 )
 def run_ocr(self, document_id: str, s3_key: str, user_id: str):
     """Extract text fields from a document, then trigger KYC validation."""
-    from app.tasks.kyc_tasks import run_kyc_validation
+    from app.tasks.kyc_tasks import dispatch_kyc_validation_if_ready
 
     logger.info("ocr_task_started", document_id=document_id, s3_key=s3_key)
 
     try:
         result = extract_document_fields(s3_key)
+
+        ocr_status = "failed" if result.get("error") else "completed"
 
         async def _save():
             from app.db.session import task_db_session
@@ -33,7 +35,7 @@ def run_ocr(self, document_id: str, s3_key: str, user_id: str):
                     user_id=user_id,
                     extracted_fields=result["fields"],
                     confidence_scores=result["confidence_scores"],
-                    verification_status="completed",
+                    verification_status=ocr_status,
                 )
                 db.add(verification)
                 await db.commit()
@@ -42,8 +44,7 @@ def run_ocr(self, document_id: str, s3_key: str, user_id: str):
         logger.info("ocr_task_complete", document_id=document_id)
 
         # Trigger KYC validation — it will wait for face task too
-        logger.info("dispatching_kyc_validation", user_id=user_id)
-        run_kyc_validation.delay(user_id)
+        dispatch_kyc_validation_if_ready(user_id, source="ocr")
 
         return {"status": "success", "document_id": document_id}
 

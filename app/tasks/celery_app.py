@@ -1,4 +1,5 @@
 from celery import Celery
+from celery.signals import worker_ready
 from app.core.config import settings
 
 # Use REDIS_URL_CELERY if set (needed for Upstash SSL), else fall back to REDIS_URL
@@ -31,14 +32,22 @@ celery_app.conf.update(
     broker_use_ssl={"ssl_cert_reqs": "CERT_NONE"} if _broker.startswith("rediss://") else None,
     redis_backend_use_ssl={"ssl_cert_reqs": "CERT_NONE"} if _backend.startswith("rediss://") else None,
     task_routes={
-        "tasks.run_ocr": {"queue": "dev_ocr"},
-        "tasks.run_face_verification": {"queue": "dev_face"},
-        "tasks.run_aml_screening": {"queue": "dev_aml"},
-        "tasks.generate_ai_summary": {"queue": "dev_ai"},
-        "tasks.run_kyc_validation": {"queue": "dev_ai"},
+        "tasks.run_ocr": {"queue": "ocr"},
+        "tasks.run_face_verification": {"queue": "face"},
+        "tasks.run_aml_screening": {"queue": "aml"},
+        "tasks.generate_ai_summary": {"queue": "ai"},
+        "tasks.run_kyc_validation": {"queue": "ai"},
     },
     task_default_retry_delay=30,
     task_max_retries=3,
     # Required for Windows — prefork uses Unix shared memory which Windows blocks
     worker_pool="solo",
 )
+
+
+@worker_ready.connect
+def prewarm_models(sender, **kwargs):
+    from app.services.ocr_service import prewarm_ocr_reader
+    from app.services.face_service import prewarm_face_models
+    prewarm_ocr_reader()
+    prewarm_face_models()

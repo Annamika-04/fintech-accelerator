@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Upload, FileText, CheckCircle2, XCircle, ArrowRight, ArrowLeft, AlertCircle } from "lucide-react";
-import { getPresignedUrl, confirmUpload, markDocumentsUploaded, uploadDocumentDirect } from "../../api/client";
+import { getPresignedUrl, confirmUpload, markDocumentsUploaded, uploadDocumentDirect, listDocuments } from "../../api/client";
 import { useOnboardingStore } from "../../store/onboardingStore";
 import { Spinner } from "../../components/ui";
 import toast from "react-hot-toast";
@@ -35,6 +35,8 @@ const DOC_TYPES_CORPORATE = [
   { value: "pan", label: "Tax Returns / EIN Document" },
 ];
 
+const ID_DOCUMENT_TYPES = ["passport", "driving_license", "aadhaar", "pan", "company_document"];
+
 export default function DocumentUploadPage({ onBack, onNext, onboardingType }: Props) {
   const { setServerStatus, serverStatus, mergeStepData, setIdDocumentS3Key } = useOnboardingStore();
 
@@ -55,11 +57,26 @@ export default function DocumentUploadPage({ onBack, onNext, onboardingType }: P
     });
   }, []);
 
+  useEffect(() => {
+    listDocuments()
+      .then((res) => {
+        const docs = res.data as { s3_key: string; document_type: string; upload_status: string }[];
+        const idDoc = docs.find((doc) =>
+          doc.upload_status === "uploaded" &&
+          doc.s3_key &&
+          ID_DOCUMENT_TYPES.includes(doc.document_type)
+        );
+        if (idDoc) setIdDocumentS3Key(idDoc.s3_key);
+      })
+      .catch(() => {});
+  }, [setIdDocumentS3Key]);
+
   const docTypes = onboardingType === "corporate" ? DOC_TYPES_CORPORATE : DOC_TYPES_INDIVIDUAL;
   const preferServerUpload = typeof window !== "undefined" && window.location.hostname === "localhost";
 
   // If server already advanced past documents step — treat as already done
   const alreadyUploaded = serverStatus ? ALREADY_UPLOADED_STATUSES.includes(serverStatus) : false;
+
   const doneCount = alreadyUploaded ? 1 : files.filter((f) => f.status === "done").length;
 
   // Persist files to store whenever they change
@@ -75,11 +92,16 @@ export default function DocumentUploadPage({ onBack, onNext, onboardingType }: P
     const entry: UploadedFile = { id: uid, name: file.name, type: selectedDocType, status: "uploading", progress: 0 };
     setFiles((f) => [...f, entry]);
 
+    const isIdDocument = ["passport", "driving_license", "aadhaar", "company_document"].includes(selectedDocType);
+
     try {
       if (preferServerUpload) {
         const { data } = await uploadDocumentDirect(selectedDocType, file);
         setFiles((f) => f.map((x) => x.id === uid ? { ...x, status: "done", progress: 100, documentId: data.document_id } : x));
-        if (data.s3_key && ["passport", "driving_license", "aadhaar", "company_document"].includes(selectedDocType)) setIdDocumentS3Key(data.s3_key);
+        if (data.s3_key && isIdDocument && ID_DOCUMENT_TYPES.includes(selectedDocType)) {
+          setIdDocumentS3Key(data.s3_key);
+          mergeStepData({ idDocumentS3Key: data.s3_key as Record<string, unknown> });
+        }
         toast.success(`${file.name} uploaded successfully`);
         return;
       }
@@ -102,7 +124,11 @@ export default function DocumentUploadPage({ onBack, onNext, onboardingType }: P
 
       await confirmUpload({ document_id: data.document_id, file_hash: uid });
       setFiles((f) => f.map((x) => x.id === uid ? { ...x, status: "done", progress: 100, documentId: data.document_id } : x));
-      if (data.s3_key && ["passport", "driving_license", "aadhaar", "company_document"].includes(selectedDocType)) setIdDocumentS3Key(data.s3_key);
+      if (data.s3_key && isIdDocument && ID_DOCUMENT_TYPES.includes(selectedDocType)) {
+        setIdDocumentS3Key(data.s3_key);
+        mergeStepData({ idDocumentS3Key: data.s3_key as Record<string, unknown> });
+      }
+      toast.success(`${file.name} uploaded successfully`);
 
     } catch (err) {
       const shouldFallback = axios.isAxiosError(err) && (!err.response || err.message === "Network Error");
@@ -111,7 +137,10 @@ export default function DocumentUploadPage({ onBack, onNext, onboardingType }: P
         try {
           const { data } = await uploadDocumentDirect(selectedDocType, file);
           setFiles((f) => f.map((x) => x.id === uid ? { ...x, status: "done", progress: 100, documentId: data.document_id } : x));
-          if (data.s3_key && ["passport", "driving_license", "aadhaar", "company_document"].includes(selectedDocType)) setIdDocumentS3Key(data.s3_key);
+          if (data.s3_key && isIdDocument && ID_DOCUMENT_TYPES.includes(selectedDocType)) {
+            setIdDocumentS3Key(data.s3_key);
+            mergeStepData({ idDocumentS3Key: data.s3_key as Record<string, unknown> });
+          }
           toast.success(`${file.name} uploaded via server fallback`);
           return;
         } catch (fallbackErr) {

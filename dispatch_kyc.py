@@ -29,7 +29,7 @@ async def main():
         from app.tasks.kyc_tasks import run_kyc_validation
         for user_id in users:
             print(f"Dispatching kyc_validation for {user_id}")
-            run_kyc_validation.apply_async(args=[user_id], queue="dev_ai")
+            run_kyc_validation.apply_async(args=[user_id], queue="ai")
 
     await engine.dispose()
 

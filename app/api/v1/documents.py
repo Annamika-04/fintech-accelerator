@@ -164,7 +164,8 @@ async def upload_document_direct(
     await db.commit()
     await db.refresh(doc)
 
-    run_ocr.delay(str(doc.id), doc.s3_key, str(current_user.id))
+    if document_type != "selfie":
+        run_ocr.delay(str(doc.id), doc.s3_key, str(current_user.id))
     return DirectUploadResponse(
         document_id=doc.id,
         s3_key=doc.s3_key,
@@ -214,8 +215,12 @@ async def confirm_upload(
         )
     await db.commit()
 
-    run_ocr.delay(str(doc.id), doc.s3_key, str(current_user.id))
-    return {"message": "Upload confirmed. OCR processing started.", "document_id": str(doc.id)}
+    if doc.document_type != "selfie":
+        run_ocr.delay(str(doc.id), doc.s3_key, str(current_user.id))
+        message = "Upload confirmed. OCR processing started."
+    else:
+        message = "Selfie upload confirmed."
+    return {"message": message, "document_id": str(doc.id)}
 
 
 @router.get("/", response_model=list[DocumentOut])
@@ -225,5 +230,6 @@ async def list_documents(
 ):
     result = await db.execute(
         select(Document).where(Document.user_id == current_user.id)
+        .order_by(Document.created_at.desc())
     )
     return result.scalars().all()

@@ -4,7 +4,7 @@ from uuid import UUID
 
 ALLOWED_DOCUMENT_TYPES = {
     "passport", "aadhaar", "pan", "driving_license",
-    "utility_bill", "company_document"
+    "utility_bill", "company_document", "selfie"
 }
 
 ALLOWED_MIME_TYPES = {
@@ -52,6 +52,7 @@ class DocumentOut(BaseModel):
     document_type: str
     s3_key: str
     upload_status: str
+    verification_status: str
     virus_scan_status: str
     created_at: datetime | None
 

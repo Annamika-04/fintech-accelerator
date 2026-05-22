@@ -4,7 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
 from app.core.logging import setup_logging
 from app.core.middleware import RequestLoggingMiddleware
-from app.api.v1 import auth, documents, face_verification, aml, risk, cases, dev_auth, onboarding, mobile_auth
+from app.api.v1 import auth, documents, face_verification, aml, risk, cases, dev_auth, onboarding, mobile_auth, admin_overrides
 from app.db.bootstrap import ensure_database_schema
 from app.db.session import engine
 
@@ -51,6 +51,7 @@ app.include_router(risk.router, prefix=prefix)
 app.include_router(cases.router, prefix=prefix)
 app.include_router(dev_auth.router, prefix=prefix)
 app.include_router(onboarding.router, prefix=prefix)
+app.include_router(admin_overrides.router, prefix=prefix)
 
 
 @app.get("/health", tags=["Health"])

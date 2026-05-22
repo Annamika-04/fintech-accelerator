@@ -20,7 +20,7 @@ async def main():
             print(f"Dispatching OCR for doc {doc_id} user {user_id}")
             run_ocr.apply_async(
                 args=[str(doc_id), s3_key, str(user_id)],
-                queue="dev_ocr",
+                queue="ocr",
             )
     await engine.dispose()
 

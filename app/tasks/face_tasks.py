@@ -21,7 +21,7 @@ def run_face_verification(
 ):
     """Compare selfie against ID document using DeepFace, then trigger KYC validation."""
     import asyncio
-    from app.tasks.kyc_tasks import run_kyc_validation
+    from app.tasks.kyc_tasks import dispatch_kyc_validation_if_ready
 
     logger.info("face_task_started", face_verification_id=face_verification_id)
 
@@ -53,11 +53,29 @@ def run_face_verification(
         logger.info("face_task_complete", face_verification_id=face_verification_id)
 
         # Trigger KYC validation — it will wait for OCR task too
-        logger.info("dispatching_kyc_validation", user_id=user_id)
-        run_kyc_validation.delay(user_id)
+        dispatch_kyc_validation_if_ready(user_id, source="face")
 
         return {"status": "success", "is_match": result["is_match"]}
 
     except Exception as exc:
         logger.error("face_task_failed", face_verification_id=face_verification_id, error=str(exc))
+        if self.request.retries >= self.max_retries:
+            async def _mark_failed():
+                from sqlalchemy import select
+                from app.db.session import task_db_session
+                from app.models.verification import FaceVerification
+
+                async with task_db_session() as db:
+                    res = await db.execute(
+                        select(FaceVerification).where(
+                            FaceVerification.id == face_verification_id
+                        )
+                    )
+                    record = res.scalar_one_or_none()
+                    if record:
+                        record.status = "failed"
+                        record.rekognition_response = {"error": str(exc)}
+                        await db.commit()
+
+            asyncio.run(_mark_failed())
         raise self.retry(exc=exc)

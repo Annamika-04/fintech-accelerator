@@ -125,6 +125,7 @@ async def get_my_onboarding_status(
     await sync_session_progress(db, session, current_status=state.current_status.value if hasattr(state.current_status, "value") else str(state.current_status))
     if state.id is not None:
         await db.commit()
+        await db.refresh(state)
     return state
 
 

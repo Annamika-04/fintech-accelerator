@@ -115,6 +115,7 @@ class OnboardingStateOut(BaseModel):
     aml_score: int | None
     final_score: int | None
     decision: str | None
+    kyc_metadata: dict | None = None
     updated_at: datetime | None
 
     model_config = {"from_attributes": True}

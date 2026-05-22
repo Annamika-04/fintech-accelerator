@@ -15,7 +15,7 @@ async def main():
 
     import redis
     r = redis.from_url(settings.REDIS_URL, decode_responses=True)
-    for q in ["dev_ai", "dev_aml", "celery"]:
+    for q in ["ocr", "face", "aml", "ai", "celery"]:
         print(f"{q}: {r.llen(q)}")
 
 asyncio.run(main())

@@ -52,6 +52,11 @@ class Settings(BaseSettings):
     RISK_MANUAL_REVIEW_MAX: int = 59
     RISK_ESCALATION_MAX: int = 84
 
+    # OCR Bypass Settings
+    ENABLE_OCR_BYPASS: bool = False  # Set to True to bypass OCR failures
+    OCR_BYPASS_SCORE: int = 45       # Score to assign when OCR is bypassed
+    REQUIRE_MANUAL_REVIEW_ON_BYPASS: bool = True  # Force manual review when bypassed
+
     class Config:
         env_file = ".env"
         case_sensitive = True

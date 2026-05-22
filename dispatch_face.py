@@ -23,7 +23,7 @@ async def main():
         from app.tasks.face_tasks import run_face_verification
         result = run_face_verification.apply_async(
             args=[str(fv_id), selfie, id_doc, str(user_id)],
-            queue="dev_face",
+            queue="face",
         )
         print(f"Task dispatched: {result.id}")
     await engine.dispose()

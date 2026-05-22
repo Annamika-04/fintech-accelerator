@@ -1,13 +1,15 @@
-import { useState, useRef, useCallback } from "react";
+import { useState, useRef, useCallback, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Camera, Upload, CheckCircle2, XCircle, ArrowRight, ArrowLeft, ScanFace, AlertTriangle, RefreshCw } from "lucide-react";
-import { getPresignedUrl, confirmUpload, submitFaceVerification, triggerKYC, saveStep } from "../../api/client";
+import { getPresignedUrl, confirmUpload, submitFaceVerification, triggerKYC, saveStep, listDocuments } from "../../api/client";
 import { useOnboardingStore } from "../../store/onboardingStore";
 import { Spinner } from "../../components/ui";
 import toast from "react-hot-toast";
 import axios from "axios";
 
 interface Props { onBack: () => void; onNext: () => void; }
+
+const ID_DOCUMENT_TYPES = ["passport", "driving_license", "aadhaar", "pan", "company_document"];
 
 type CheckStatus = "pending" | "pass" | "fail";
 interface QualityChecks {
@@ -16,8 +18,14 @@ interface QualityChecks {
   noGlassesHat: CheckStatus;
 }
 
+interface DocumentRecord {
+  s3_key: string;
+  document_type: string;
+  upload_status: string;
+}
+
 export default function SelfieCapturePage({ onBack, onNext }: Props) {
-  const { setServerStatus, nextStep, idDocumentS3Key, mergeStepData } = useOnboardingStore();
+  const { setServerStatus, nextStep, idDocumentS3Key, setIdDocumentS3Key, mergeStepData } = useOnboardingStore();
   const savedSelfie = useOnboardingStore.getState().stepData?.selfie as { selfie_s3_key?: string; preview?: string } | undefined;
 
   const [selfieFile, setSelfieFile] = useState<File | null>(null);
@@ -30,6 +38,33 @@ export default function SelfieCapturePage({ onBack, onNext }: Props) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [cameraActive, setCameraActive] = useState(false);
   const streamRef = useRef<MediaStream | null>(null);
+
+  const restoreIdDocumentKey = useCallback(async () => {
+    try {
+      const docsRes = await listDocuments();
+      const docs = docsRes.data as DocumentRecord[];
+      const idDoc = docs.find((doc) =>
+        doc.upload_status === "uploaded" &&
+        !!doc.s3_key &&
+        ID_DOCUMENT_TYPES.includes(doc.document_type)
+      );
+
+      if (idDoc) {
+        setIdDocumentS3Key(idDoc.s3_key);
+        return idDoc.s3_key;
+      }
+      return null;
+    } catch (err) {
+      console.error("Failed to restore ID document key:", err);
+      return null;
+    }
+  }, [setIdDocumentS3Key]);
+
+  useEffect(() => {
+    if (!idDocumentS3Key) {
+      restoreIdDocumentKey().catch(() => {});
+    }
+  }, [idDocumentS3Key, restoreIdDocumentKey]);
 
   // ── Image quality checks ──────────────────────────────────────────────────
   const [checks, setChecks] = useState<QualityChecks>({
@@ -174,7 +209,7 @@ export default function SelfieCapturePage({ onBack, onNext }: Props) {
     setUploading(true);
     try {
       const { data } = await getPresignedUrl({
-        document_type: "passport",
+        document_type: "selfie",
         filename: selfieFile.name,
         content_type: selfieFile.type,
         file_size_bytes: selfieFile.size,
@@ -195,11 +230,21 @@ export default function SelfieCapturePage({ onBack, onNext }: Props) {
   };
 
   const handleContinue = async () => {
-    if (!selfieS3Key) return toast.error("Please upload your selfie first");
-    if (!idDocumentS3Key) return toast.error("ID document not found. Please go back and upload your document.");
+    if (!selfieS3Key) {
+      toast.error("Please upload your selfie first");
+      return;
+    }
+
     setAdvancing(true);
     try {
-      await submitFaceVerification({ selfie_s3_key: selfieS3Key, id_document_s3_key: idDocumentS3Key });
+      const resolvedIdDocumentKey = idDocumentS3Key || await restoreIdDocumentKey();
+      if (!resolvedIdDocumentKey) {
+        toast.error("ID document not found. Please go back and upload your identity document.");
+        setAdvancing(false);
+        return;
+      }
+
+      await submitFaceVerification({ selfie_s3_key: selfieS3Key, id_document_s3_key: resolvedIdDocumentKey });
       const res = await triggerKYC();
       setServerStatus(res.data.current_status);
       nextStep();
@@ -210,7 +255,10 @@ export default function SelfieCapturePage({ onBack, onNext }: Props) {
         onNext();
         return;
       }
-      toast.error("Failed to submit. Please try again.");
+      const errorMsg = axios.isAxiosError(err)
+        ? err.response?.data?.detail || "Failed to submit. Please try again."
+        : "Failed to submit. Please try again.";
+      toast.error(errorMsg);
     } finally {
       setAdvancing(false);
     }

@@ -54,6 +54,24 @@ def _check_image_quality(img: np.ndarray) -> dict:
     }
 
 
+def prewarm_face_models():
+    """Load DeepFace Facenet512 model at worker startup to avoid first-request latency."""
+    import tempfile, os
+    from deepface import DeepFace
+    blank = np.zeros((160, 160, 3), dtype=np.uint8)
+    with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as f:
+        tmp = f.name
+    try:
+        cv2.imwrite(tmp, blank)
+        try:
+            DeepFace.verify(tmp, tmp, model_name="Facenet512", detector_backend="opencv", enforce_detection=False)
+        except Exception:
+            pass
+    finally:
+        os.unlink(tmp)
+    logger.info("deepface_model_prewarmed")
+
+
 def compare_faces(selfie_s3_key: str, id_document_s3_key: str) -> dict:
     """Compare selfie against ID document face using DeepFace."""
     from deepface import DeepFace
