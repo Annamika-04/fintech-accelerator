@@ -30,8 +30,9 @@ export default function OnboardingWizard() {
     REGISTERED: 0,
     TYPE_SELECTED: 1,
     PROFILE_COMPLETED: 2,
-    DOCUMENTS_UPLOADED: 3,
-    KYC_PENDING: 4,
+    DOCUMENTS_UPLOADED: 2,
+    KYC_PENDING: 3,
+    KYC_VALIDATION_RUNNING: 3,
     AML_PENDING: 4,
     UNDER_REVIEW: 4,
     APPROVED: 4,
@@ -58,6 +59,17 @@ export default function OnboardingWizard() {
         const resumeStep = stepMap[current_status] ?? 0;
         setStep(resumeStep);
         setMaxUnlockedStep(resumeStep);
+
+        // Restore idDocumentS3Key from DB if not in store
+        if (!useOnboardingStore.getState().idDocumentS3Key) {
+          import("../../api/client").then(({ listDocuments }) => {
+            listDocuments().then((docsRes) => {
+              const docs = docsRes.data as { s3_key: string; document_type: string; upload_status: string }[];
+              const idDoc = docs.find((d) => d.upload_status === "uploaded" && d.s3_key && ["passport", "driving_license", "aadhaar", "company_document"].includes(d.document_type));
+              if (idDoc) useOnboardingStore.getState().setIdDocumentS3Key(idDoc.s3_key);
+            }).catch(() => {});
+          });
+        }
       })
       .catch(() => {})
       .finally(() => setBootstrapped(true));

@@ -142,6 +142,8 @@ async def resume_onboarding(
     steps = result.scalars().all()
     await sync_session_progress(db, session, current_status=state.current_status.value if hasattr(state.current_status, "value") else str(state.current_status))
     await db.commit()
+    await db.refresh(state)
+    await db.refresh(session)
     return OnboardingResumeOut(state=state, session=session, steps=steps)
 
 

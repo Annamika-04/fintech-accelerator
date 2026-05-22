@@ -18,6 +18,7 @@ class OnboardingStatus(str, enum.Enum):
     PROFILE_COMPLETED = "PROFILE_COMPLETED"
     DOCUMENTS_UPLOADED = "DOCUMENTS_UPLOADED"
     KYC_PENDING = "KYC_PENDING"
+    KYC_VALIDATION_RUNNING = "KYC_VALIDATION_RUNNING"
     AML_PENDING = "AML_PENDING"
     UNDER_REVIEW = "UNDER_REVIEW"
     APPROVED = "APPROVED"
@@ -31,7 +32,8 @@ TRANSITIONS: dict[OnboardingStatus, list[OnboardingStatus]] = {
     OnboardingStatus.TYPE_SELECTED:       [OnboardingStatus.PROFILE_COMPLETED],
     OnboardingStatus.PROFILE_COMPLETED:   [OnboardingStatus.DOCUMENTS_UPLOADED],
     OnboardingStatus.DOCUMENTS_UPLOADED:  [OnboardingStatus.KYC_PENDING],
-    OnboardingStatus.KYC_PENDING:         [OnboardingStatus.AML_PENDING],
+    OnboardingStatus.KYC_PENDING:         [OnboardingStatus.KYC_VALIDATION_RUNNING],
+    OnboardingStatus.KYC_VALIDATION_RUNNING: [OnboardingStatus.AML_PENDING, OnboardingStatus.UNDER_REVIEW, OnboardingStatus.REJECTED],
     OnboardingStatus.AML_PENDING:         [OnboardingStatus.UNDER_REVIEW],
     OnboardingStatus.UNDER_REVIEW:        [OnboardingStatus.APPROVED, OnboardingStatus.REJECTED, OnboardingStatus.FROZEN],
     OnboardingStatus.APPROVED:            [],
@@ -116,4 +118,5 @@ class OnboardingState(Base):
     aml_score        = Column(Integer, nullable=True)
     final_score      = Column(Integer, nullable=True)
     decision         = Column(String(50), nullable=True)
+    kyc_metadata     = Column(JSON, nullable=True)  # confidence scores, review reasons, score breakdown
     updated_at       = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())

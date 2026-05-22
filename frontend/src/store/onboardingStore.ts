@@ -28,6 +28,8 @@ export interface OnboardingState {
 
   // Wizard UI state
   currentStep: number;
+  idDocumentS3Key: string | null;
+  stepData: Record<string, Record<string, unknown>> | null;
 
   // Actions
   setOwnerUserId: (id: string | null) => void;
@@ -37,6 +39,8 @@ export interface OnboardingState {
   setScores: (kyc: number | null, aml: number | null, final: number | null, decision: string | null) => void;
   setStep: (step: number) => void;
   nextStep: () => void;
+  setIdDocumentS3Key: (key: string | null) => void;
+  mergeStepData: (data: Record<string, Record<string, unknown>>) => void;
   reset: () => void;
 }
 
@@ -52,6 +56,8 @@ export const useOnboardingStore = create<OnboardingState>()(
       finalScore: null,
       decision: null,
       currentStep: 0,
+      idDocumentS3Key: null,
+      stepData: null,
 
       setOwnerUserId: (id) => set({ ownerUserId: id }),
       setServerStatus: (s) => set({ serverStatus: s }),
@@ -61,6 +67,9 @@ export const useOnboardingStore = create<OnboardingState>()(
         set({ kycScore: kyc, amlScore: aml, finalScore: final, decision }),
       setStep: (step) => set({ currentStep: step }),
       nextStep: () => set((s) => ({ currentStep: s.currentStep + 1 })),
+      setIdDocumentS3Key: (key) => set({ idDocumentS3Key: key }),
+      mergeStepData: (data) =>
+        set((s) => ({ stepData: { ...(s.stepData ?? {}), ...data } })),
       reset: () =>
         set({
           ownerUserId: null,
@@ -72,6 +81,8 @@ export const useOnboardingStore = create<OnboardingState>()(
           finalScore: null,
           decision: null,
           currentStep: 0,
+          idDocumentS3Key: null,
+          stepData: null,
         }),
     }),
     { name: "kyc-onboarding" }

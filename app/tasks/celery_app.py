@@ -14,6 +14,7 @@ celery_app = Celery(
         "app.tasks.face_tasks",
         "app.tasks.aml_tasks",
         "app.tasks.ai_tasks",
+        "app.tasks.kyc_tasks",
     ],
 )
 
@@ -30,10 +31,11 @@ celery_app.conf.update(
     broker_use_ssl={"ssl_cert_reqs": "CERT_NONE"} if _broker.startswith("rediss://") else None,
     redis_backend_use_ssl={"ssl_cert_reqs": "CERT_NONE"} if _backend.startswith("rediss://") else None,
     task_routes={
-        "app.tasks.ocr_tasks.*": {"queue": "ocr"},
-        "app.tasks.face_tasks.*": {"queue": "face"},
-        "app.tasks.aml_tasks.*": {"queue": "aml"},
-        "app.tasks.ai_tasks.*": {"queue": "ai"},
+        "tasks.run_ocr": {"queue": "dev_ocr"},
+        "tasks.run_face_verification": {"queue": "dev_face"},
+        "tasks.run_aml_screening": {"queue": "dev_aml"},
+        "tasks.generate_ai_summary": {"queue": "dev_ai"},
+        "tasks.run_kyc_validation": {"queue": "dev_ai"},
     },
     task_default_retry_delay=30,
     task_max_retries=3,

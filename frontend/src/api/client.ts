@@ -109,6 +109,9 @@ export const markDocumentsUploaded = () =>
 
 export const triggerKYC = () => api.post("/onboarding/advance/kyc-pending");
 
+export const saveStep = (_step: string, _data: Record<string, unknown>, _unused: undefined): Promise<void> =>
+  Promise.resolve();
+
 export const makeDecision = (userId: string, decision: string) =>
   api.post(`/onboarding/decision/${userId}?decision=${decision}`);
 

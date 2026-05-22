@@ -8,6 +8,8 @@ Set-ExecutionPolicy -Scope Process -ExecutionPolicy RemoteSigned
 .\venv\Scripts\Activate.ps1
 .\venv\Scripts\uvicorn.exe app.main:app --host 0.0.0.0 --port 8000 --reload
 
+uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload (or)
+
 Run this from project root: .\start_backend.ps1 ( from start_celery.ps1)
 
 ## Terminal 2 — React Frontend (port 5173)
@@ -18,8 +20,12 @@ npm run dev
 cd C:\Users\OneData\Documents\Fintech_base
 Set-ExecutionPolicy -Scope Process -ExecutionPolicy RemoteSigned
 .\venv\Scripts\Activate.ps1
-.\venv\Scripts\celery.exe -A app.tasks.celery_app.celery_app worker -Q ocr,face,aml,ai -l info --pool=solo
+.\.venv\Scripts\celery.exe -A app.tasks.celery_app.celery_app worker -Q ocr,face,aml,ai -l info --pool=solo (or)
+celery -A app.tasks.celery_app.celery_app worker -Q ocr,face,aml,ai -l info --pool=solo
 
+
+ docker run -p 6379:6379 redis:7-alpine
+ 
 ## Always running automatically (no action needed)
 - PostgreSQL  → Windows Service, starts with PC
 - Redis       → Upstash cloud, always online

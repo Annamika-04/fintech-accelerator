@@ -1,5 +1,5 @@
 from app.tasks.celery_app import celery_app
-from app.services.rekognition import compare_faces
+from app.services.face_service import compare_faces
 from app.core.logging import get_logger
 
 logger = get_logger(__name__)
@@ -19,8 +19,9 @@ def run_face_verification(
     id_document_s3_key: str,
     user_id: str,
 ):
-    """Compare selfie against ID document using AWS Rekognition."""
+    """Compare selfie against ID document using DeepFace, then trigger KYC validation."""
     import asyncio
+    from app.tasks.kyc_tasks import run_kyc_validation
 
     logger.info("face_task_started", face_verification_id=face_verification_id)
 
@@ -28,11 +29,11 @@ def run_face_verification(
         result = compare_faces(selfie_s3_key, id_document_s3_key)
 
         async def _save():
-            from app.db.session import AsyncSessionLocal
+            from app.db.session import task_db_session
             from app.models.verification import FaceVerification
             from sqlalchemy import select
 
-            async with AsyncSessionLocal() as db:
+            async with task_db_session() as db:
                 res = await db.execute(
                     select(FaceVerification).where(
                         FaceVerification.id == face_verification_id
@@ -44,11 +45,17 @@ def run_face_verification(
                     record.confidence_score = result["confidence_score"]
                     record.is_match = result["is_match"]
                     record.rekognition_response = result["raw_response"]
+                    record.image_quality = result.get("quality", {})
                     record.status = "completed"
                     await db.commit()
 
         asyncio.run(_save())
         logger.info("face_task_complete", face_verification_id=face_verification_id)
+
+        # Trigger KYC validation — it will wait for OCR task too
+        logger.info("dispatching_kyc_validation", user_id=user_id)
+        run_kyc_validation.delay(user_id)
+
         return {"status": "success", "is_match": result["is_match"]}
 
     except Exception as exc:
