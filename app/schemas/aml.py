@@ -12,9 +12,11 @@ class AMLScreeningRequest(BaseModel):
 class AMLScreeningOut(BaseModel):
     id: UUID
     normalized_name: str
+    screening_provider: str | None = None
     is_pep: bool
     is_sanctioned: bool
     adverse_media_flag: bool
+    match_details: list | None = None
     risk_flags: list | None
     screened_at: datetime | None
 

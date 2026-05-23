@@ -1,6 +1,7 @@
 import ssl
 from functools import lru_cache
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
+from pydantic import field_validator
 from pydantic_settings import BaseSettings
 
 
@@ -56,6 +57,17 @@ class Settings(BaseSettings):
     ENABLE_OCR_BYPASS: bool = False  # Set to True to bypass OCR failures
     OCR_BYPASS_SCORE: int = 45       # Score to assign when OCR is bypassed
     REQUIRE_MANUAL_REVIEW_ON_BYPASS: bool = True  # Force manual review when bypassed
+
+    @field_validator("DEBUG", mode="before")
+    @classmethod
+    def parse_debug_flag(cls, value):
+        if isinstance(value, str):
+            normalized = value.strip().lower()
+            if normalized in {"release", "prod", "production"}:
+                return False
+            if normalized in {"dev", "development"}:
+                return True
+        return value
 
     class Config:
         env_file = ".env"

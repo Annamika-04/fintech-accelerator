@@ -71,6 +71,11 @@ function verificationScoreColor(s: number) {
   return s >= 85 ? "#22c55e" : s >= 65 ? "#f59e0b" : "#ef4444";
 }
 
+function decisionLabel(decision: string | null) {
+  if (!decision) return "Pending";
+  return decision.replace(/_/g, " ");
+}
+
 function inferRejectedStep(state: ServerState): OnboardingStatus {
   if (state.current_status !== "REJECTED") return state.current_status;
   if (state.kyc_score !== null && state.aml_score === null) return "KYC_PENDING";
@@ -150,6 +155,9 @@ export default function VerificationStatusPage() {
   const reviewReasons = state.kyc_metadata?.review_reasons ?? [];
   const verificationScore = state.kyc_score;
   const verificationColor = verificationScore !== null ? verificationScoreColor(verificationScore) : "#64748b";
+  const amlCompleted = state.aml_score !== null;
+  const rejectedByAml = state.current_status === "REJECTED" && amlCompleted;
+  const kycManualReview = reviewReasons.length > 0 || state.kyc_metadata?.confidence?.manual_review_required === true || state.kyc_metadata?.confidence?.ocr_bypassed === true;
 
   const chartData = [
     ...(state.final_score !== null ? [{ name: "Final Score", value: state.final_score, fill: color }] : []),
@@ -176,7 +184,9 @@ export default function VerificationStatusPage() {
             : state.current_status === "APPROVED"
               ? "Your identity has been verified. You're all set."
               : state.current_status === "REJECTED"
-                ? `Rejected during ${rejectedStepLabel}.`
+                ? rejectedByAml
+                  ? "Rejected after AML screening found a critical watchlist match."
+                  : `Rejected during ${rejectedStepLabel}.`
                 : "Your account has been frozen pending compliance review."}
         </p>
         {isPending && (
@@ -186,6 +196,22 @@ export default function VerificationStatusPage() {
         )}
       </div>
 
+      {state.current_status === "UNDER_REVIEW" && amlCompleted && kycManualReview && (
+        <motion.div
+          initial={{ opacity: 0, y: -8 }}
+          animate={{ opacity: 1, y: 0 }}
+          style={{ background: "rgba(245,158,11,0.08)", border: "1px solid rgba(245,158,11,0.24)", borderLeft: "3px solid #f59e0b", borderRadius: 12, padding: "16px 18px", marginBottom: 20 }}
+        >
+          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
+            <AlertTriangle size={18} color="#f59e0b" />
+            <div style={{ fontSize: 14, fontWeight: 700, color: "#fde68a" }}>KYC requires manual review, AML completed</div>
+          </div>
+          <div style={{ fontSize: 12, color: "#fbbf24", lineHeight: 1.6 }}>
+            Document OCR could not confidently verify every field, so KYC is under manual review. AML screening has still completed using the submitted profile data.
+          </div>
+        </motion.div>
+      )}
+
       {state.current_status === "REJECTED" && (
         <motion.div
           initial={{ opacity: 0, y: -8 }}
@@ -194,10 +220,14 @@ export default function VerificationStatusPage() {
         >
           <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
             <XCircle size={18} color="#ef4444" />
-            <div style={{ fontSize: 14, fontWeight: 700, color: "#fecaca" }}>Verification stopped at {rejectedStepLabel}</div>
+            <div style={{ fontSize: 14, fontWeight: 700, color: "#fecaca" }}>
+              {rejectedByAml ? "AML screening rejected this application" : `Verification stopped at ${rejectedStepLabel}`}
+            </div>
           </div>
           <div style={{ fontSize: 12, color: "#fca5a5", lineHeight: 1.6, marginBottom: reviewReasons.length ? 10 : 0 }}>
-            AML screening was not started because identity verification did not pass.
+            {rejectedByAml
+              ? "A critical sanctions or watchlist match was found during AML screening."
+              : "AML screening was not started because identity verification did not pass."}
           </div>
           {reviewReasons.length > 0 && (
             <div style={{ display: "grid", gap: 7 }}>
@@ -217,7 +247,7 @@ export default function VerificationStatusPage() {
         {TIMELINE_STEPS.map((step, i) => {
           const stepIdx = statusIndex(step);
           const isFailed = state.current_status === "REJECTED" && step === timelineStatus;
-          const amlActuallyRan = state.aml_score !== null;
+          const amlActuallyRan = amlCompleted;
           const isDone = !isFailed && currentIdx > stepIdx && (step !== "AML_PENDING" || amlActuallyRan);
           const isActive = !isFailed && (currentIdx === stepIdx || (step === "AML_PENDING" && !amlActuallyRan && currentIdx > stepIdx));
           const stepMeta = STATUS_META[step];
@@ -238,7 +268,8 @@ export default function VerificationStatusPage() {
                   {stepMeta.label}
                 </div>
                 {isActive && isPending && step !== "AML_PENDING" && <div style={{ fontSize: 11, color: stepMeta.color }}>In progress...</div>}
-                {step === "AML_PENDING" && !amlActuallyRan && currentIdx > stepIdx && <div style={{ fontSize: 11, color: "#64748b" }}>Skipped</div>}
+                {step === "AML_PENDING" && amlActuallyRan && <div style={{ fontSize: 11, color: "#22c55e" }}>Completed</div>}
+                {step === "AML_PENDING" && !amlActuallyRan && currentIdx > stepIdx && <div style={{ fontSize: 11, color: "#64748b" }}>Waiting</div>}
                 {isFailed && <div style={{ fontSize: 11, color: "#ef4444" }}>Rejected here</div>}
               </div>
             </div>
@@ -282,7 +313,7 @@ export default function VerificationStatusPage() {
             <div style={{ flex: 1 }}>
               <div style={{ fontSize: 15, fontWeight: 600, color, marginBottom: 6 }}>{scoreLabel(finalScore)}</div>
               <div style={{ fontSize: 12, color: "#475569", marginBottom: 12 }}>
-                Decision: <span style={{ color: "#94a3b8", fontWeight: 500 }}>{state.decision?.replace(/_/g, " ") || "Pending"}</span>
+                Decision: <span style={{ color: "#94a3b8", fontWeight: 500 }}>{decisionLabel(state.decision)}</span>
               </div>
             </div>
           </div>

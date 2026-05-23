@@ -23,7 +23,16 @@ def run_ocr(self, document_id: str, s3_key: str, user_id: str):
     try:
         result = extract_document_fields(s3_key)
 
-        ocr_status = "failed" if result.get("error") else "completed"
+        manual_review_error = result.get("error") == "low_accuracy_manual_review_required"
+        requires_manual_review = bool(result.get("requires_manual_review") or manual_review_error)
+        ocr_status = "completed" if requires_manual_review or not result.get("error") else "failed"
+        extracted_fields = dict(result.get("fields") or {})
+        if requires_manual_review:
+            extracted_fields["requires_manual_review"] = True
+        if result.get("error"):
+            extracted_fields["error"] = result["error"]
+        if result.get("raw_ocr_text"):
+            extracted_fields["raw_ocr_text"] = result["raw_ocr_text"]
 
         async def _save():
             from app.db.session import task_db_session
@@ -33,8 +42,8 @@ def run_ocr(self, document_id: str, s3_key: str, user_id: str):
                 verification = DocumentVerification(
                     document_id=document_id,
                     user_id=user_id,
-                    extracted_fields=result["fields"],
-                    confidence_scores=result["confidence_scores"],
+                    extracted_fields=extracted_fields,
+                    confidence_scores=result.get("confidence_scores") or {},
                     verification_status=ocr_status,
                 )
                 db.add(verification)
