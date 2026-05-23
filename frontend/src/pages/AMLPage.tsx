@@ -20,7 +20,10 @@ interface AMLResult {
 const DEMO_NAMES = [
   { name: "John Illegal", result: "Sanctions", color: "#ef4444" },
   { name: "Minister Demo", result: "PEP", color: "#f59e0b" },
+  { name: "Rahul Mishra", result: "PEP", color: "#f59e0b" },
+  { name: "Elon Musk", result: "PEP", color: "#f59e0b" },
   { name: "Fraud News User", result: "Adverse Media", color: "#f97316" },
+  { name: "Manish Das", result: "Adverse Media", color: "#f97316" },
   { name: "Annamika P", result: "Clear", color: "#22c55e" },
 ];
 

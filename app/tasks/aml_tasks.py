@@ -33,6 +33,7 @@ def run_aml_screening(
         from app.db.session import task_db_session
         from app.models.aml import AMLScreening
         from app.models.onboarding import OnboardingState, OnboardingStatus
+        from app.models.risk import Case
 
         result = await screen_entity(full_name, date_of_birth, profile_type)
 
@@ -85,6 +86,16 @@ def run_aml_screening(
                     "aml_status_skipped",
                     user_id=user_id,
                     current_status=state.current_status.value if state else "none",
+                )
+
+            if result.get("is_sanctioned") or result.get("is_pep") or result.get("adverse_media_flag"):
+                await _ensure_aml_case(
+                    db,
+                    Case,
+                    user_id=user_id,
+                    result=result,
+                    aml_score=aml_score,
+                    aml_decision=aml_decision,
                 )
 
             await db.commit()
@@ -140,3 +151,64 @@ def _calculate_final_risk_score(kyc_score: int | None, aml_score: int) -> int:
     kyc_confidence = max(0, min(int(kyc_score or 0), 100))
     kyc_risk = max(0, 100 - kyc_confidence)
     return min(100, max(aml_score, kyc_risk))
+
+
+async def _ensure_aml_case(db, case_model, *, user_id: str, result: dict, aml_score: int, aml_decision: str) -> None:
+    from sqlalchemy import select
+
+    case_type = _case_type_for_aml_result(result)
+    existing = await db.execute(
+        select(case_model).where(
+            case_model.user_id == user_id,
+            case_model.case_type == case_type,
+            case_model.status == "open",
+        )
+    )
+    if existing.scalar_one_or_none():
+        return
+
+    case = case_model(
+        user_id=user_id,
+        case_type=case_type,
+        status="open",
+        priority=_case_priority_for_aml_result(result),
+        notes=_case_notes_for_aml_result(result, aml_score, aml_decision),
+    )
+    db.add(case)
+    await db.flush()
+
+
+def _case_type_for_aml_result(result: dict) -> str:
+    if result.get("is_sanctioned"):
+        return "sanctions_hit"
+    if result.get("is_pep"):
+        return "pep_match"
+    if result.get("adverse_media_flag"):
+        return "aml_alert"
+    return "aml_alert"
+
+
+def _case_priority_for_aml_result(result: dict) -> str:
+    if result.get("is_sanctioned"):
+        return "critical"
+    if result.get("is_pep"):
+        return "high"
+    if result.get("adverse_media_flag"):
+        return "high"
+    return "medium"
+
+
+def _case_notes_for_aml_result(result: dict, aml_score: int, aml_decision: str) -> str:
+    match_details = result.get("match_details") or []
+    detail = match_details[0] if match_details else {}
+    category = detail.get("category") or "AML"
+    name = detail.get("name") or result.get("normalized_name") or "Unknown"
+    reason = detail.get("reason") or detail.get("position") or detail.get("headline") or "Watchlist match"
+    provider = result.get("screening_provider", "unknown")
+    return (
+        f"{category} match for {name}. "
+        f"Provider: {provider}. "
+        f"AML score: {aml_score}. "
+        f"Decision: {aml_decision}. "
+        f"Reason: {reason}."
+    )

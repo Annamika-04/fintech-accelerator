@@ -1,10 +1,12 @@
 import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
-import { AlertTriangle, CheckCircle2, Clock, RefreshCw, ShieldCheck, XCircle } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Clock, LogOut, RefreshCw, ShieldCheck, XCircle } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 import { RadialBar, RadialBarChart, ResponsiveContainer, Tooltip } from "recharts";
 import { getOnboardingStatus } from "../../api/client";
 import { useOnboardingStore, OnboardingStatus } from "../../store/onboardingStore";
 import { Spinner } from "../../components/ui";
+import { useAuth } from "../../context/AuthContext";
 
 const STATUS_META: Record<OnboardingStatus, { label: string; color: string; icon: typeof CheckCircle2 }> = {
   REGISTERED: { label: "Registered", color: "#64748b", icon: Clock },
@@ -95,8 +97,15 @@ const ScoreTooltip = ({ active, payload }: { active?: boolean; payload?: { paylo
 
 export default function VerificationStatusPage() {
   const { setServerStatus, setScores } = useOnboardingStore();
+  const { logout } = useAuth();
+  const navigate = useNavigate();
   const [state, setState] = useState<ServerState | null>(null);
   const [loading, setLoading] = useState(true);
+
+  const backToLogin = () => {
+    logout();
+    navigate("/login", { replace: true });
+  };
 
   const fetchStatus = async () => {
     try {
@@ -189,11 +198,16 @@ export default function VerificationStatusPage() {
                   : `Rejected during ${rejectedStepLabel}.`
                 : "Your account has been frozen pending compliance review."}
         </p>
-        {isPending && (
-          <button onClick={fetchStatus} style={{ marginTop: 12, display: "inline-flex", alignItems: "center", gap: 6, background: "none", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 8, padding: "6px 14px", color: "#64748b", fontSize: 12, cursor: "pointer" }}>
-            <RefreshCw size={12} /> Refresh
+        <div style={{ marginTop: 12, display: "flex", justifyContent: "center", gap: 8, flexWrap: "wrap" }}>
+          {isPending && (
+            <button onClick={fetchStatus} style={{ display: "inline-flex", alignItems: "center", gap: 6, background: "none", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 8, padding: "6px 14px", color: "#64748b", fontSize: 12, cursor: "pointer" }}>
+              <RefreshCw size={12} /> Refresh
+            </button>
+          )}
+          <button onClick={backToLogin} style={{ display: "inline-flex", alignItems: "center", gap: 6, background: "rgba(99,102,241,0.1)", border: "1px solid rgba(99,102,241,0.22)", borderRadius: 8, padding: "6px 14px", color: "#818cf8", fontSize: 12, cursor: "pointer" }}>
+            <LogOut size={12} /> Back to Login
           </button>
-        )}
+        </div>
       </div>
 
       {state.current_status === "UNDER_REVIEW" && amlCompleted && kycManualReview && (
@@ -330,6 +344,12 @@ export default function VerificationStatusPage() {
           </div>
         </motion.div>
       )}
+
+      <div style={{ display: "flex", justifyContent: "center", marginTop: 24 }}>
+        <button onClick={backToLogin} style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 8, minWidth: 150, background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.09)", borderRadius: 10, padding: "10px 16px", color: "#94a3b8", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>
+          <LogOut size={14} /> Logout
+        </button>
+      </div>
     </motion.div>
   );
 }

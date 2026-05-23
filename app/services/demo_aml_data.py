@@ -23,6 +23,14 @@ DEMO_SANCTIONS = [
         "match_score": 99,
         "action": "REJECT",
     },
+    {
+        "name": "Nikhil Kumar",
+        "country": "India",
+        "reason": "Demo sanctions match for Aadhaar/KYC walkthrough",
+        "risk_level": "CRITICAL",
+        "match_score": 97,
+        "action": "REJECT",
+    },
 ]
 
 
@@ -51,6 +59,24 @@ DEMO_PEP = [
         "match_score": 84,
         "action": "ENHANCED_DUE_DILIGENCE",
     },
+    {
+        "name": "Rahul Mishra",
+        "country": "India",
+        "position": "Former Municipal Development Committee Member",
+        "document_hint": "Aadhaar demo ID ending 2170",
+        "risk_level": "HIGH",
+        "match_score": 89,
+        "action": "MANUAL_REVIEW",
+    },
+    {
+        "name": "Elon Musk",
+        "country": "India",
+        "position": "Demo politically exposed profile simulation",
+        "document_hint": "Aadhaar demo ID ending 2345",
+        "risk_level": "HIGH",
+        "match_score": 90,
+        "action": "MANUAL_REVIEW",
+    },
 ]
 
 
@@ -78,6 +104,15 @@ DEMO_ADVERSE_MEDIA = [
         "risk_level": "LOW",
         "match_score": 67,
         "action": "REVIEW",
+    },
+    {
+        "name": "Manish Das",
+        "country": "India",
+        "headline": "Named in demo adverse media report for suspicious account activity",
+        "document_hint": "Aadhaar demo ID ending 9012",
+        "risk_level": "MEDIUM",
+        "match_score": 78,
+        "action": "ESCALATE",
     },
 ]
 

@@ -106,6 +106,47 @@ def _score_quality(ocr_fields: dict, face_result: dict) -> tuple[int, float, str
     return int(WEIGHT_QUALITY * 0.5), avg_conf, f"Low OCR confidence (avg={avg_conf:.1f})"
 
 
+def _is_definite_face_mismatch(face_result: dict) -> bool:
+    if not face_result:
+        return False
+    similarity = float(face_result.get("similarity_score") or 0)
+    if similarity <= 0:
+        return False
+    return face_result.get("is_match") is False or similarity < FACE_MATCH_THRESHOLD
+
+
+def _face_mismatch_rejection(face_result: dict) -> dict:
+    quality_data = face_result.get("quality", {}) if face_result else {}
+    similarity = float(face_result.get("similarity_score") or 0) if face_result else 0.0
+    return {
+        "kyc_score": 0,
+        "decision": "REJECTED",
+        "passed": False,
+        "bypass_reason": "FACE_MISMATCH",
+        "review_reasons": [
+            f"Face verification failed: selfie does not match the uploaded ID document (similarity={similarity:.1f}, required={FACE_MATCH_THRESHOLD}).",
+            "Please upload a selfie of the same person shown on the identity document.",
+        ],
+        "confidence": {
+            "name_similarity": 0.0,
+            "dob_match": False,
+            "face_similarity": similarity,
+            "face_is_match": False,
+            "ocr_confidence_avg": 0.0,
+            "blur_score": quality_data.get("blur_score", 0),
+            "brightness": quality_data.get("brightness", 0),
+            "face_detected": similarity > 0,
+        },
+        "score_breakdown": {
+            "name": 0,
+            "dob": 0,
+            "face": 0,
+            "liveness": 0,
+            "quality": 0,
+        },
+    }
+
+
 # ── Main validation function ──────────────────────────────────────────────────
 
 def run_kyc_validation(
@@ -117,6 +158,15 @@ def run_kyc_validation(
     # Check if OCR failed or requires manual review
     requires_manual = ocr_fields.get("requires_manual_review", False)
     ocr_error = ocr_fields.get("error")
+
+    if _is_definite_face_mismatch(face_result):
+        logger.info(
+            "kyc_rejected_face_mismatch",
+            profile_name=profile_name,
+            similarity=face_result.get("similarity_score", 0) if face_result else 0,
+            is_match=face_result.get("is_match") if face_result else None,
+        )
+        return _face_mismatch_rejection(face_result)
     
     # Configuration-based OCR bypass
     if settings.ENABLE_OCR_BYPASS and (requires_manual or ocr_error):

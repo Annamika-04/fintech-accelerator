@@ -321,6 +321,25 @@ _PAN_NOISE = re.compile(
 )
 _PAN_NUMBER = re.compile(r"\b[A-Z]{5}[0-9]{4}[A-Z]\b")
 _DOB_PATTERN = re.compile(r"\b(\d{2}[/\-.\s]\d{2}[/\-.\s]\d{4})\b")
+_NAME_LABEL_NOISE = re.compile(
+    r"\b(name|namo|father|fathers|fother|fothers|date|datc|birth|blrth|birt|dob|male|female|gender|card|number|aadhaar|uidai)\b",
+    re.I,
+)
+
+
+def _is_name_candidate(line: str) -> bool:
+    text = line.strip()
+    upper = text.upper()
+    if len(text) <= 2:
+        return False
+    if _PAN_NOISE.search(text) or _NAME_LABEL_NOISE.search(text):
+        return False
+    if _PAN_NUMBER.search(upper) or _DOB_PATTERN.search(text):
+        return False
+    if any(ch.isdigit() for ch in text):
+        return False
+    letters = [ch for ch in text if ch.isalpha()]
+    return len(letters) >= 3
 
 
 def _parse_pan_card(structured: list) -> dict:
@@ -350,7 +369,7 @@ def _parse_pan_card(structured: list) -> dict:
     if dob_idx is not None:
         candidates = [
             (i, lines[i]) for i in range(dob_idx)
-            if not _PAN_NOISE.search(lines[i]) and len(lines[i].strip()) > 2
+            if _is_name_candidate(lines[i])
         ]
         if len(candidates) >= 2:
             fields["name"] = candidates[-2][1].strip()
