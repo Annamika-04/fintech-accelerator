@@ -45,7 +45,7 @@ export default function Layout() {
             }}>⬡</div>
             <div>
               <div style={{ fontSize: 14, fontWeight: 600, color: "#e8d9b0", letterSpacing: "0.03em" }}>
-                VeritasAML
+                OneTrust
               </div>
               <div style={{ fontSize: 9, color: "rgba(180,145,70,0.5)", letterSpacing: "0.12em", textTransform: "uppercase" }}>
                 Compliance

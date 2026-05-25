@@ -106,7 +106,7 @@ export default function OnboardingWizard() {
       <div style={{ borderBottom: "1px solid rgba(255,255,255,0.06)", padding: "16px 32px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
           <ShieldCheck size={20} color="#6366f1" />
-          <span style={{ fontSize: 15, fontWeight: 600, color: "#f1f5f9" }}>VeritasAML</span>
+          <span style={{ fontSize: 15, fontWeight: 600, color: "#f1f5f9" }}>OneTrust</span>
           <span style={{ fontSize: 11, color: "#334155", marginLeft: 4 }}>/ KYC Onboarding</span>
         </div>
         <div style={{ fontSize: 12, color: "#475569" }}>

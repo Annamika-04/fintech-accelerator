@@ -17,10 +17,10 @@ async def get_current_user(
 ) -> User:
     token = credentials.credentials
 
-    # ── Try OTP-issued HS256 token first (iss = veritasaml-otp) ──────────────
+    # ── Try OTP-issued HS256 token first (iss = onetrust-otp) ──────────────
     try:
         unverified = jwt.get_unverified_claims(token)
-        if unverified.get("iss") == "veritasaml-otp":
+        if unverified.get("iss") == "onetrust-otp":
             payload = jwt.decode(token, settings.SECRET_KEY, algorithms=["HS256"])
             user_id = payload.get("sub")
             if not user_id:

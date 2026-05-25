@@ -57,7 +57,7 @@ export default function PhoneLoginPage() {
         <div style={{ display: "flex", alignItems: "center", gap: 12, position: "relative", zIndex: 2 }}>
           <div style={{ width: 40, height: 40, background: "rgba(180,145,70,0.1)", border: "1.5px solid rgba(180,145,70,0.4)", borderRadius: 10, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18 }}>⬡</div>
           <div>
-            <div style={{ fontSize: 16, fontWeight: 700, color: "#e8d9b0", letterSpacing: "0.03em" }}>VeritasAML</div>
+            <div style={{ fontSize: 16, fontWeight: 700, color: "#e8d9b0", letterSpacing: "0.03em" }}>OneTrust</div>
             <div style={{ fontSize: 9, color: "rgba(180,145,70,0.5)", letterSpacing: "0.15em", textTransform: "uppercase" }}>Compliance Intelligence</div>
           </div>
         </div>

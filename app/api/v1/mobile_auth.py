@@ -101,7 +101,7 @@ def _issue_access_token(user: User, phone: str) -> str:
         "sub": str(user.id),
         "phone": phone,
         "role": user.role.value,
-        "iss": "veritasaml-otp",
+        "iss": "onetrust-otp",
         "exp": datetime.utcnow() + timedelta(hours=8),
     }
     return jwt.encode(payload, settings.SECRET_KEY, algorithm="HS256")
@@ -111,7 +111,7 @@ def _issue_refresh_token(user: User) -> str:
     payload = {
         "sub": str(user.id),
         "type": "refresh",
-        "iss": "veritasaml-otp",
+        "iss": "onetrust-otp",
         "exp": datetime.utcnow() + timedelta(days=30),
     }
     return jwt.encode(payload, settings.SECRET_KEY, algorithm="HS256")
